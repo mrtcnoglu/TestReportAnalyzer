@@ -63,6 +63,11 @@ cd TestReportAnalyzer
 4. Frontend bağımlılıklarını (`frontend` klasöründe) yükler.
 5. PDF yüklemeleri için `backend/uploads/` klasörünü oluşturur.
 
+> **Node.js Yüklü Değil mi?**
+>
+> Kurulum sırasında Node.js veya npm bulunamazsa betik backend kurulumuna devam eder ancak frontend bağımlılıkları adımını
+> atlar. Bu durumda Node.js 18+ sürümünü yükledikten sonra `frontend` klasöründe `npm install` komutunu manuel olarak çalıştırmanız yeterlidir.
+
 ## Çalıştırma
 Uygulamayı başlatmak için kök dizinde aşağıdaki PowerShell komutunu çalıştırın:
 
