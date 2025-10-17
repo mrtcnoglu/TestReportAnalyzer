@@ -8,18 +8,27 @@ $ErrorActionPreference = 'Stop'
 function Test-Executable {
     param(
         [Parameter(Mandatory)]
-        [string]$Name
+        [string]$Name,
+
+        [switch]$Optional
     )
 
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        if ($Optional) {
+            Write-Warning "Gerekli komut bulunamadı: $Name. İlgili adım atlanacak."
+            return $false
+        }
+
         throw "Gerekli komut bulunamadı: $Name"
     }
+
+    return $true
 }
 
 Write-Host "==> Sistem gereksinimleri doğrulanıyor..."
-Test-Executable -Name "python"
-Test-Executable -Name "node"
-Test-Executable -Name "npm"
+$pythonAvailable = Test-Executable -Name "python"
+$nodeAvailable = Test-Executable -Name "node" -Optional
+$npmAvailable = Test-Executable -Name "npm" -Optional
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backendDir = Join-Path $root "backend"
@@ -50,12 +59,18 @@ if (-not (Test-Path $uploadsDir)) {
     New-Item -ItemType Directory -Path $uploadsDir | Out-Null
 }
 
-Write-Host "==> Frontend bağımlılıkları yükleniyor..."
-Push-Location $frontendDir
-try {
-    & npm install
-} finally {
-    Pop-Location
-}
+if ($nodeAvailable -and $npmAvailable) {
+    Write-Host "==> Frontend bağımlılıkları yükleniyor..."
+    Push-Location $frontendDir
+    try {
+        & npm install
+    } finally {
+        Pop-Location
+    }
 
-Write-Host "Kurulum başarıyla tamamlandı."
+    Write-Host "Kurulum başarıyla tamamlandı."
+} else {
+    Write-Warning "Node.js veya npm bulunamadığı için frontend bağımlılıklarının kurulumu atlandı."
+    Write-Warning "Node.js 18+ ve npm kurulduktan sonra frontend klasöründe 'npm install' komutunu manuel olarak çalıştırabilirsiniz."
+    Write-Host "Backend kurulum adımları başarıyla tamamlandı."
+}
