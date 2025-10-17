@@ -31,8 +31,11 @@ git clone https://github.com/<kullanici-adiniz>/TestReportAnalyzer.git
 cd TestReportAnalyzer
 
 # Kurulum komut dosyasını çalıştırın
-./setup.ps1
+.\setup.ps1
 ```
+
+> **Not:** PowerShell'de aynı klasördeki komut dosyalarını çalıştırmak için `.\` ön ekini kullanmanız önerilir. Bu sözdizimi 
+> özellikle Windows PowerShell 5.1 gibi eski sürümlerde `./` kullanımının komutun bulunamamasına yol açmasını engeller.
 
 `setup.ps1` betiği aşağıdaki işlemleri yapar:
 1. Python ve Node.js kurulumlarını doğrular.
@@ -45,7 +48,7 @@ cd TestReportAnalyzer
 Uygulamayı başlatmak için kök dizinde aşağıdaki PowerShell komutunu çalıştırın:
 
 ```powershell
-./start-app.ps1
+.\start-app.ps1
 ```
 
 Betik, backend'i (Flask sunucusu) 127.0.0.1:5000 üzerinde, frontend'i ise 127.0.0.1:3000 üzerinde başlatır. Her iki hizmet yeni PowerShell pencerelerinde açılır ve durumu terminale yazdırılır.
@@ -53,14 +56,14 @@ Betik, backend'i (Flask sunucusu) 127.0.0.1:5000 üzerinde, frontend'i ise 127.0
 Uygulamayı durdurmak için:
 
 ```powershell
-./stop-app.ps1
+.\stop-app.ps1
 ```
 
 Alternatif olarak bileşenleri ayrı ayrı yönetmek isterseniz:
 
 ```powershell
-./start-backend.ps1   # Flask API'yi başlatır
-./start-frontend.ps1  # React uygulamasını başlatır
+.\start-backend.ps1   # Flask API'yi başlatır
+.\start-frontend.ps1  # React uygulamasını başlatır
 ```
 
 ## Kullanım
