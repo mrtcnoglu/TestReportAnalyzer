@@ -19,5 +19,5 @@ CREATE TABLE IF NOT EXISTS test_results (
     FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_report_id ON test_results(report_id);
-CREATE INDEX idx_status ON test_results(status);
+CREATE INDEX IF NOT EXISTS idx_report_id ON test_results(report_id);
+CREATE INDEX IF NOT EXISTS idx_status ON test_results(status);
