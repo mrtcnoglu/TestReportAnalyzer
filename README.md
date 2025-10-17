@@ -25,6 +25,25 @@ TestReportAnalyzer, otomatik test raporlarını analiz ederek başarısız testl
 ## Kurulum
 Tüm adımlar PowerShell içerisinde uygulanmalıdır.
 
+> **PowerShell Execution Policy Hatası mı Alıyorsunuz?**
+>
+> Bazı Windows kurulumlarında varsayılan Execution Policy ayarı, depo içindeki PowerShell betiklerinin (ör. `setup.ps1`)
+> çalıştırılmasını engelleyebilir ve `running scripts is disabled on this system` hatası dönebilir. Bu durumda komutları yalnızca
+> mevcut oturum için yetkilendirmek amacıyla aşağıdaki komutu çalıştırabilirsiniz:
+>
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+> ```
+>
+> Ardından kurulum adımlarına kaldığınız yerden devam edebilirsiniz. Kalıcı bir değişiklik yapılmadığından bilgisayarınızın
+> genel güvenlik ayarları etkilenmez. Alternatif olarak betiği şu şekilde de çalıştırabilirsiniz:
+>
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File .\setup.ps1
+> ```
+>
+> Yukarıdaki yöntemlerden yalnızca biri yeterlidir; ikisini birden çalıştırmanıza gerek yoktur.
+
 ```powershell
 # Depoyu klonlayın
 git clone https://github.com/<kullanici-adiniz>/TestReportAnalyzer.git
