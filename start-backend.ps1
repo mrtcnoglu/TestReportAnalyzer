@@ -14,7 +14,17 @@ if (-not (Test-Path $venvPython)) {
 
 Push-Location $backendDir
 try {
-    Write-Host "Flask API http://127.0.0.1:5000 adresinde başlatılıyor..."
+    $hostAddress = $env:FLASK_RUN_HOST
+    if (-not $hostAddress) { $hostAddress = $env:FLASK_HOST }
+    if (-not $hostAddress) { $hostAddress = $env:HOST }
+    if (-not $hostAddress) { $hostAddress = '0.0.0.0' }
+
+    $portNumber = $env:FLASK_RUN_PORT
+    if (-not $portNumber) { $portNumber = $env:FLASK_PORT }
+    if (-not $portNumber) { $portNumber = $env:PORT }
+    if (-not $portNumber) { $portNumber = '5000' }
+
+    Write-Host "Flask API http://$hostAddress:$portNumber adresinde başlatılıyor..."
     & $venvPython "app.py"
 } finally {
     Pop-Location
