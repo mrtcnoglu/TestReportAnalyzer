@@ -25,24 +25,30 @@ TestReportAnalyzer, otomatik test raporlarını analiz ederek başarısız testl
 ## Kurulum
 Tüm adımlar PowerShell içerisinde uygulanmalıdır.
 
-> **PowerShell Execution Policy Hatası mı Alıyorsunuz?**
->
-> Bazı Windows kurulumlarında varsayılan Execution Policy ayarı, depo içindeki PowerShell betiklerinin (ör. `setup.ps1`)
-> çalıştırılmasını engelleyebilir ve `running scripts is disabled on this system` hatası dönebilir. Bu durumda komutları yalnızca
-> mevcut oturum için yetkilendirmek amacıyla aşağıdaki komutu çalıştırabilirsiniz:
->
-> ```powershell
-> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-> ```
->
-> Ardından kurulum adımlarına kaldığınız yerden devam edebilirsiniz. Kalıcı bir değişiklik yapılmadığından bilgisayarınızın
-> genel güvenlik ayarları etkilenmez. Alternatif olarak betiği şu şekilde de çalıştırabilirsiniz:
->
-> ```powershell
-> powershell -ExecutionPolicy Bypass -File .\setup.ps1
-> ```
->
-> Yukarıdaki yöntemlerden yalnızca biri yeterlidir; ikisini birden çalıştırmanıza gerek yoktur.
+### 1. Depo klasörüne geçin
+PowerShell penceresinde komutları çalıştırmadan önce proje klasörüne geçtiğinizden emin olun. Aksi halde `start-frontend.ps1`
+gibi betikler "komut bulunamadı" hatası döndürebilir.
+
+```powershell
+cd C:\TestReportAnalyzer
+```
+
+### 2. (Gerekirse) Execution Policy kısıtlamasını kaldırın
+Bazı Windows kurulumlarında varsayılan Execution Policy ayarı, depo içindeki PowerShell betiklerinin (ör. `setup.ps1`) çalış-
+tırılmasını engelleyerek `running scripts is disabled on this system` hatasına yol açabilir. Komutların yalnızca mevcut oturum
+için çalışmasına izin vermek üzere aşağıdaki komutlardan **birini** uygulayın:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+veya
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+Bu yöntemler geçici olduğundan bilgisayarınızın genel güvenlik ayarlarını kalıcı olarak değiştirmez.
 
 ```powershell
 # Depoyu klonlayın
