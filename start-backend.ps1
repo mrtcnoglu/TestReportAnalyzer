@@ -24,7 +24,7 @@ try {
     if (-not $portNumber) { $portNumber = $env:PORT }
     if (-not $portNumber) { $portNumber = '5000' }
 
-    Write-Host "Flask API http://$hostAddress:$portNumber adresinde başlatılıyor..."
+    Write-Host "Flask API http://${hostAddress}:${portNumber} adresinde başlatılıyor..."
     & $venvPython "app.py"
 } finally {
     Pop-Location
