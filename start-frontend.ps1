@@ -1,131 +1,51 @@
 [CmdletBinding()]
-param()
+param(
+  [string]$UiDir
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$frontendDir = Join-Path $root "frontend"
+Write-Host 'React arayüzü http://127.0.0.1:3000 adresinde başlatılıyor...'
 
-function Resolve-NodeTooling {
-    [OutputType([pscustomobject])]
-    param()
+$npmExecutable = (Get-Command npm -ErrorAction Stop).Source
 
-    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
-    $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
-
-    $nodePath = $null
-    $npmPath = $null
-    $npmCliScript = $null
-    $resolvedViaFallback = $false
-
-    if ($nodeCommand) {
-        $nodePath = $nodeCommand.Path
-        if (-not $nodePath) { $nodePath = $nodeCommand.Source }
-    }
-
-    if ($npmCommand) {
-        $npmPath = $npmCommand.Path
-        if (-not $npmPath) { $npmPath = $npmCommand.Source }
-    }
-
-    $candidateDirs = @()
-    if ($nodePath) { $candidateDirs += (Split-Path $nodePath -Parent) }
-    if ($npmPath) { $candidateDirs += (Split-Path $npmPath -Parent) }
-
-    $programFiles = [System.Environment]::GetEnvironmentVariable("ProgramFiles")
-    if ($programFiles) { $candidateDirs += (Join-Path $programFiles "nodejs") }
-
-    $programFilesX86 = [System.Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
-    if ($programFilesX86) { $candidateDirs += (Join-Path $programFilesX86 "nodejs") }
-
-    $localAppData = [System.Environment]::GetEnvironmentVariable("LocalAppData")
-    if ($localAppData) { $candidateDirs += (Join-Path $localAppData "Programs\nodejs") }
-
-    $appData = [System.Environment]::GetEnvironmentVariable("AppData")
-    if ($appData) { $candidateDirs += (Join-Path $appData "npm") }
-
-    $uniqueCandidateDirs = $candidateDirs | Where-Object { $_ } | Select-Object -Unique
-
-    foreach ($dir in $uniqueCandidateDirs) {
-        if (-not (Test-Path $dir)) { continue }
-
-        if (-not $nodePath) {
-            foreach ($nodeName in @("node.exe", "node.cmd", "node")) {
-                $candidate = Join-Path $dir $nodeName
-                if (Test-Path $candidate) {
-                    $nodePath = $candidate
-                    $resolvedViaFallback = $true
-                    break
-                }
-            }
-        }
-
-        if (-not $npmPath) {
-            foreach ($npmName in @("npm.cmd", "npm.ps1", "npm.exe", "npm")) {
-                $candidate = Join-Path $dir $npmName
-                if (Test-Path $candidate) {
-                    $npmPath = $candidate
-                    $resolvedViaFallback = $true
-                    break
-                }
-            }
-        }
-
-        if ($nodePath -and $npmPath) { break }
-    }
-
-    $probableNodeDirs = @()
-    if ($nodePath) {
-        $probableNodeDirs += (Split-Path $nodePath -Parent)
-    }
-
-    $probableNodeDirs += $uniqueCandidateDirs
-
-    foreach ($dir in ($probableNodeDirs | Where-Object { $_ } | Select-Object -Unique)) {
-        foreach ($relative in @("node_modules/npm/bin/npm-cli.js", "lib/node_modules/npm/bin/npm-cli.js")) {
-            $candidate = Join-Path $dir $relative
-            if (Test-Path $candidate) {
-                $npmCliScript = $candidate
-                break
-            }
-        }
-
-        if ($npmCliScript) { break }
-    }
-
-    return [pscustomobject]@{
-        NodePath = $nodePath
-        NpmPath = $npmPath
-        ResolvedViaFallback = $resolvedViaFallback
-        NpmFoundViaCommand = [bool]$npmCommand
-        NpmCliScript = $npmCliScript
-    }
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $UiDir) {
+  $frontend = Join-Path $scriptRoot 'frontend'
+  $UiDir = if (Test-Path (Join-Path $frontend 'package.json')) { $frontend } else { $scriptRoot }
 }
 
-$nodeTooling = Resolve-NodeTooling
-$npmExecutable = $nodeTooling.NpmPath
-$npmArguments = @("start")
-
-if (-not $npmExecutable -and $nodeTooling.NodePath -and $nodeTooling.NpmCliScript) {
-    Write-Host "npm komutu PATH içinde bulunamadı; Node.js kurulumundaki npm-cli.js kullanılacak." -ForegroundColor Yellow
-    $npmExecutable = $nodeTooling.NodePath
-    $npmArguments = @($nodeTooling.NpmCliScript, "start")
+$pkgPath = Join-Path $UiDir 'package.json'
+if (-not (Test-Path $pkgPath)) {
+  throw "package.json bulunamadı: $pkgPath"
 }
 
-if (-not $npmExecutable) {
-    throw "npm komutu bulunamadı. Lütfen Node.js ve npm'in kurulu olduğundan emin olun ve gerekirse setup.ps1 betiğini yeniden çalıştırın."
-}
-
-if (-not $nodeTooling.NpmFoundViaCommand) {
-    Write-Host "npm PATH değişkeninde bulunamadı; varsayılan Node.js kurulum klasöründen kullanılacak. PATH'in güncellenmesi için yeni bir terminal açmanız gerekebilir." -ForegroundColor Yellow
-}
-
-Push-Location $frontendDir
+Push-Location $UiDir
 try {
-    Write-Host "React arayüzü http://127.0.0.1:3000 adresinde başlatılıyor..."
-    & $npmExecutable @npmArguments
-} finally {
-    Pop-Location
+  if (Test-Path (Join-Path $UiDir 'package-lock.json')) {
+    & $npmExecutable ci
+  }
+  else {
+    & $npmExecutable install
+  }
+
+  $pkg = Get-Content -Raw -Path $pkgPath | ConvertFrom-Json
+  $scriptNames = if ($pkg.scripts) { $pkg.scripts.PSObject.Properties.Name } else { @() }
+  $hasStart = $scriptNames -contains 'start'
+  $hasDev = $scriptNames -contains 'dev'
+
+  if ($hasStart) {
+    & $npmExecutable run start
+  }
+  elseif ($hasDev) {
+    & $npmExecutable run dev
+  }
+  else {
+    throw "package.json içinde 'start' veya 'dev' script'i yok."
+  }
+}
+finally {
+  Pop-Location
 }
