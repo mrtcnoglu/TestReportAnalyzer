@@ -17,6 +17,7 @@ function Resolve-NodeTooling {
 
     $nodePath = $null
     $npmPath = $null
+    $npmCliScript = $null
     $resolvedViaFallback = $false
 
     if ($nodeCommand) {
@@ -45,7 +46,9 @@ function Resolve-NodeTooling {
     $appData = [System.Environment]::GetEnvironmentVariable("AppData")
     if ($appData) { $candidateDirs += (Join-Path $appData "npm") }
 
-    foreach ($dir in ($candidateDirs | Where-Object { $_ } | Select-Object -Unique)) {
+    $uniqueCandidateDirs = $candidateDirs | Where-Object { $_ } | Select-Object -Unique
+
+    foreach ($dir in $uniqueCandidateDirs) {
         if (-not (Test-Path $dir)) { continue }
 
         if (-not $nodePath) {
@@ -73,16 +76,43 @@ function Resolve-NodeTooling {
         if ($nodePath -and $npmPath) { break }
     }
 
+    $probableNodeDirs = @()
+    if ($nodePath) {
+        $probableNodeDirs += (Split-Path $nodePath -Parent)
+    }
+
+    $probableNodeDirs += $uniqueCandidateDirs
+
+    foreach ($dir in ($probableNodeDirs | Where-Object { $_ } | Select-Object -Unique)) {
+        foreach ($relative in @("node_modules/npm/bin/npm-cli.js", "lib/node_modules/npm/bin/npm-cli.js")) {
+            $candidate = Join-Path $dir $relative
+            if (Test-Path $candidate) {
+                $npmCliScript = $candidate
+                break
+            }
+        }
+
+        if ($npmCliScript) { break }
+    }
+
     return [pscustomobject]@{
         NodePath = $nodePath
         NpmPath = $npmPath
         ResolvedViaFallback = $resolvedViaFallback
         NpmFoundViaCommand = [bool]$npmCommand
+        NpmCliScript = $npmCliScript
     }
 }
 
 $nodeTooling = Resolve-NodeTooling
 $npmExecutable = $nodeTooling.NpmPath
+$npmArguments = @("start")
+
+if (-not $npmExecutable -and $nodeTooling.NodePath -and $nodeTooling.NpmCliScript) {
+    Write-Host "npm komutu PATH içinde bulunamadı; Node.js kurulumundaki npm-cli.js kullanılacak." -ForegroundColor Yellow
+    $npmExecutable = $nodeTooling.NodePath
+    $npmArguments = @($nodeTooling.NpmCliScript, "start")
+}
 
 if (-not $npmExecutable) {
     throw "npm komutu bulunamadı. Lütfen Node.js ve npm'in kurulu olduğundan emin olun ve gerekirse setup.ps1 betiğini yeniden çalıştırın."
@@ -95,7 +125,7 @@ if (-not $nodeTooling.NpmFoundViaCommand) {
 Push-Location $frontendDir
 try {
     Write-Host "React arayüzü http://127.0.0.1:3000 adresinde başlatılıyor..."
-    & $npmExecutable start
+    & $npmExecutable @npmArguments
 } finally {
     Pop-Location
 }

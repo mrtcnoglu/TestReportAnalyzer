@@ -34,6 +34,7 @@ function Resolve-NodeTooling {
 
     $nodePath = $null
     $npmPath = $null
+    $npmCliScript = $null
     $resolvedViaFallback = $false
 
     if ($nodeCommand) {
@@ -62,7 +63,9 @@ function Resolve-NodeTooling {
     $appData = [System.Environment]::GetEnvironmentVariable("AppData")
     if ($appData) { $candidateDirs += (Join-Path $appData "npm") }
 
-    foreach ($dir in ($candidateDirs | Where-Object { $_ } | Select-Object -Unique)) {
+    $uniqueCandidateDirs = $candidateDirs | Where-Object { $_ } | Select-Object -Unique
+
+    foreach ($dir in $uniqueCandidateDirs) {
         if (-not (Test-Path $dir)) { continue }
 
         if (-not $nodePath) {
@@ -90,12 +93,32 @@ function Resolve-NodeTooling {
         if ($nodePath -and $npmPath) { break }
     }
 
+    $probableNodeDirs = @()
+    if ($nodePath) {
+        $probableNodeDirs += (Split-Path $nodePath -Parent)
+    }
+
+    $probableNodeDirs += $uniqueCandidateDirs
+
+    foreach ($dir in ($probableNodeDirs | Where-Object { $_ } | Select-Object -Unique)) {
+        foreach ($relative in @("node_modules/npm/bin/npm-cli.js", "lib/node_modules/npm/bin/npm-cli.js")) {
+            $candidate = Join-Path $dir $relative
+            if (Test-Path $candidate) {
+                $npmCliScript = $candidate
+                break
+            }
+        }
+
+        if ($npmCliScript) { break }
+    }
+
     return [pscustomobject]@{
         NodePath = $nodePath
         NpmPath = $npmPath
         ResolvedViaFallback = $resolvedViaFallback
         NodeFoundViaCommand = [bool]$nodeCommand
         NpmFoundViaCommand = [bool]$npmCommand
+        NpmCliScript = $npmCliScript
     }
 }
 
@@ -105,6 +128,8 @@ $nodeTooling = Resolve-NodeTooling
 $nodeAvailable = [bool]$nodeTooling.NodePath
 $npmAvailable = [bool]$nodeTooling.NpmPath
 $npmExecutable = $nodeTooling.NpmPath
+$npmArguments = @("install")
+$npmRunnable = $npmAvailable -or ($nodeAvailable -and $nodeTooling.NpmCliScript)
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backendDir = Join-Path $root "backend"
@@ -135,7 +160,13 @@ if (-not (Test-Path $uploadsDir)) {
     New-Item -ItemType Directory -Path $uploadsDir | Out-Null
 }
 
-if ($nodeAvailable -and $npmAvailable) {
+if ($nodeAvailable -and $npmRunnable) {
+    if (-not $npmExecutable -and $nodeTooling.NpmCliScript) {
+        Write-Host "npm komutu PATH içinde bulunamadı; Node.js kurulumundaki npm-cli.js kullanılacak." -ForegroundColor Yellow
+        $npmExecutable = $nodeTooling.NodePath
+        $npmArguments = @($nodeTooling.NpmCliScript, "install")
+    }
+
     if (-not $nodeTooling.NpmFoundViaCommand) {
         Write-Host "npm PATH değişkeninde bulunamadı; varsayılan Node.js kurulum klasöründen kullanılacak. PATH'in güncellenmesi için yeni bir terminal açmanız gerekebilir." -ForegroundColor Yellow
     }
@@ -143,7 +174,7 @@ if ($nodeAvailable -and $npmAvailable) {
     Write-Host "==> Frontend bağımlılıkları yükleniyor..."
     Push-Location $frontendDir
     try {
-        & $npmExecutable install
+        & $npmExecutable @npmArguments
     } finally {
         Pop-Location
     }
