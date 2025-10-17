@@ -9,16 +9,16 @@ $ErrorActionPreference = 'Stop'
 
 Write-Host 'React arayüzü http://127.0.0.1:3000 adresinde başlatılıyor...'
 
-if (-not (Get-Variable -Name npmExecutable -Scope Script -ErrorAction SilentlyContinue)) {
-  try {
-    Set-Variable -Name npmExecutable -Scope Script -Value ((Get-Command npm -ErrorAction Stop).Source)
-  }
-  catch {
-    throw "npm komutu bulunamadı. Lütfen Node.js ve npm kurulumunu doğrulayın."
-  }
+try {
+  $npmExecutable = (Get-Command npm -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Path)
+}
+catch {
+  throw "npm komutu bulunamadı. Lütfen Node.js ve npm kurulumunu doğrulayın."
 }
 
-$npmExecutable = (Get-Variable -Name npmExecutable -Scope Script).Value
+if (-not $npmExecutable) {
+  throw "npm komutu bulunamadı. Lütfen Node.js ve npm kurulumunu doğrulayın."
+}
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $UiDir) {
