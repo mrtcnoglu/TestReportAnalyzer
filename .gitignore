@@ -1,0 +1,13 @@
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/database.db
+backend/uploads/*.pdf
+frontend/node_modules/
+frontend/build/
+frontend/.env
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.log
