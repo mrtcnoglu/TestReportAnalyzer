@@ -22,7 +22,12 @@ Set-Location $UiDir
 $ranCi = $false
 if (Test-Path 'package-lock.json') {
   & $npm ci
-  if ($LASTEXITCODE -eq 0) { $ranCi = $true }
+  if ($LASTEXITCODE -eq 0) {
+    $ranCi = $true
+  }
+  else {
+    Write-Warning "npm ci başarısız oldu (kod: $LASTEXITCODE). package-lock.json kilidi npm install ile yenilenecek."
+  }
 }
 if (-not $ranCi) {
   & $npm install
