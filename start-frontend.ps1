@@ -3,19 +3,12 @@ param([string]$UiDir)
 $ErrorActionPreference = 'Stop'
 Write-Host 'React arayüzü http://127.0.0.1:3000 adresinde başlatılıyor...'
 
-# 1) NPM yürütücüsünü bul: önce npm.cmd, yoksa npm (Windows PowerShell uyumlu)
-$npmCmdInfo = Get-Command npm.cmd -ErrorAction SilentlyContinue
-if ($npmCmdInfo) {
-  $npm = $npmCmdInfo.Source
-} else {
-  $npmInfo = Get-Command npm -ErrorAction Stop
-  $npm = $npmInfo.Source
-
-  # Windows ortamında, `npm` aslında `npm.cmd`'i işaret edebilir; varsa onu kullan.
-  $possibleCmd = Join-Path (Split-Path $npm) 'npm.cmd'
-  if (Test-Path $possibleCmd) {
-    $npm = $possibleCmd
-  }
+# 1) NPM yürütücüsünü bul: önce npm.cmd, yoksa npm
+$npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)?.Source
+if (-not $npm) {
+  $npm = (Get-Command npm -ErrorAction Stop).Source
+  $npmCmd = Join-Path (Split-Path $npm) 'npm.cmd'
+  if (Test-Path $npmCmd) { $npm = $npmCmd }
 }
 
 # 2) UI dizini: varsayılan .\frontend, yoksa betik kökü
@@ -25,11 +18,15 @@ if (-not $UiDir) {
 }
 Set-Location $UiDir
 
-# 3) Bağımlılıklar
+# 3) Bağımlılıklar: ci dene; hata olursa install
+$ranCi = $false
 if (Test-Path 'package-lock.json') {
   & $npm ci
-} else {
+  if ($LASTEXITCODE -eq 0) { $ranCi = $true }
+}
+if (-not $ranCi) {
   & $npm install
+  if ($LASTEXITCODE -ne 0) { throw "npm install başarısız." }
 }
 
 # 4) package.json script seçimi
