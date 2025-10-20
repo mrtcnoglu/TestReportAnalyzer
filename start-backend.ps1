@@ -1,46 +1,61 @@
 [CmdletBinding()]
 param()
 
+# --- VENV OTOMASYONU (Windows) ---
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $repoRoot
+
+# Olası sanal ortam klasörleri
+$venvCandidates = @('venv', '.venv')
+$venvPath = $null
+foreach ($c in $venvCandidates) {
+    if (Test-Path (Join-Path $repoRoot $c)) { $venvPath = (Join-Path $repoRoot $c); break }
+}
+
+# Yoksa oluştur
+if (-not $venvPath) {
+    Write-Host "Sanal ortam bulunamadı. 'venv' oluşturuluyor..."
+    & py -m venv (Join-Path $repoRoot 'venv')
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $repoRoot 'venv'))) {
+        throw "Sanal ortam oluşturulamadı. Sisteminizde 'py' yoksa Python 3 kurun."
+    }
+    $venvPath = (Join-Path $repoRoot 'venv')
+}
+
+# Aktif et
+$activate = Join-Path $venvPath 'Scripts\Activate.ps1'
+if (-not (Test-Path $activate)) { throw "Venv bulunuyor fakat Activate.ps1 yok: $activate" }
+. $activate
+
+# Gerekirse bağımlılıkları kur
+if (Test-Path (Join-Path $repoRoot 'requirements.txt')) {
+    pip install -r (Join-Path $repoRoot 'requirements.txt')
+    if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt başarısız." }
+}
+# --- VENV OTOMASYONU SONU ---
+
+$backendRequirements = Join-Path $repoRoot 'backend/requirements.txt'
+if (Test-Path $backendRequirements) {
+    pip install -r $backendRequirements
+    if ($LASTEXITCODE -ne 0) { throw "pip install -r backend/requirements.txt başarısız." }
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = $repoRoot
 $backendDir = Join-Path $root 'backend'
-$venvCandidates = @(
-    (Join-Path $backendDir 'venv\Scripts\python.exe'),
-    (Join-Path $backendDir '.venv\Scripts\python.exe')
-)
-$venvPython = $venvCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-function Resolve-PythonLauncher {
-    foreach ($name in 'py', 'python', 'python3') {
-        $command = Get-Command $name -ErrorAction SilentlyContinue
-        if ($command) {
-            if ($command.Source) { return $command.Source }
-            if ($command.Path)   { return $command.Path }
-        }
-    }
-
-    throw 'Python yürütücüsü bulunamadı. Lütfen Python kurulumunu doğrulayın.'
-}
-
-if (-not $venvPython) {
-    $venvTarget = Join-Path $backendDir 'venv'
-    Write-Host "Python sanal ortamı oluşturuluyor: $venvTarget"
-    $pythonLauncher = Resolve-PythonLauncher
-    & $pythonLauncher -m venv $venvTarget
-    $venvPython = $venvCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $venvPython) {
-        throw "Sanal ortam oluşturulamadı: $venvTarget"
-    }
-}
-
-$requirements = Join-Path $backendDir 'requirements.txt'
-if (Test-Path $requirements) {
-    Write-Host 'Backend bağımlılıkları yükleniyor...'
-    & $venvPython -m pip install --upgrade pip
-    & $venvPython -m pip install -r $requirements
+$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+if ($pythonCmd -and $pythonCmd.Source) {
+    $venvPython = $pythonCmd.Source
+} elseif ($pythonCmd -and $pythonCmd.Path) {
+    $venvPython = $pythonCmd.Path
+} else {
+    throw 'Aktif sanal ortamda python yürütücüsü bulunamadı.'
 }
 
 Push-Location $backendDir

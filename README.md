@@ -96,6 +96,16 @@ Alternatif olarak bileşenleri ayrı ayrı yönetmek isterseniz:
 .\start-frontend.ps1  # React uygulamasını başlatır
 ```
 
+### Windows (PowerShell) notları
+
+- PowerShell 5.1 kullanıyorsanız, konsol kod sayfasını ve I/O kodlamasını UTF-8 yapmanız önerilir.
+- Frontend betiği `npm.ps1` yerine **npm.cmd** kullanacak şekilde güncellenmiştir.
+- İlk kurulumda `npm ci` lock dosyası ile sürümler uyumsuzsa otomatik olarak `npm install` adımına düşer.
+- Backend için `start-backend.ps1` venv yoksa otomatik **venv** oluşturur ve aktive eder.
+
+> Not: `npm ci` sırasında `typescript` sürüm uyuşmazlığı (ör. lock 5.9.3 vs package.json 4.9.5) varsa,
+> bir defaya mahsus `npm install` ile lock dosyasını güncelleyin veya `npm install typescript@<hedef-sürüm> --save-exact` uygulayın.
+
 ## Kullanım
 1. Frontend arayüzünde "PDF Yükle" formunu kullanarak test raporunu yükleyin.
 2. Yükleme tamamlandığında rapor listesine yeni bir kayıt eklenir.
