@@ -10,7 +10,8 @@ $ErrorActionPreference = 'Stop'
 Write-Host 'React arayüzü http://127.0.0.1:3000 adresinde başlatılıyor...'
 
 try {
-  $npmExecutable = (Get-Command npm -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Path)
+  $npmCommand = Get-Command -Name npm -ErrorAction Stop
+  $npmExecutable = $npmCommand.Path
 }
 catch {
   throw "npm komutu bulunamadı. Lütfen Node.js ve npm kurulumunu doğrulayın."
