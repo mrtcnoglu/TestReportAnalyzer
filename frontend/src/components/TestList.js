@@ -1,6 +1,6 @@
 import React from "react";
 
-const TestList = ({ tests }) => {
+const TestList = ({ tests, showAiProvider = false }) => {
   if (!tests || tests.length === 0) {
     return <p>Gösterilecek test sonucu bulunamadı.</p>;
   }
@@ -20,7 +20,18 @@ const TestList = ({ tests }) => {
         <tbody>
           {tests.map((test) => (
             <tr key={test.id || test.test_name}>
-              <td>{test.test_name}</td>
+              <td>
+                {test.test_name}
+                {test.status === "FAIL" && showAiProvider && (
+                  <span className={`ai-badge ${test.ai_provider || "rule-based"}`}>
+                    {test.ai_provider === "claude"
+                      ? "🤖 Claude"
+                      : test.ai_provider === "chatgpt"
+                      ? "🤖 ChatGPT"
+                      : "📋 Kural Tabanlı"}
+                  </span>
+                )}
+              </td>
               <td>
                 <span
                   className={`status-pill ${test.status === "PASS" ? "status-pass" : "status-fail"}`}

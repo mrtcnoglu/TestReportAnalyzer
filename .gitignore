@@ -11,3 +11,4 @@ frontend/.env
 Thumbs.db
 desktop.ini
 *.log
+backend/.env

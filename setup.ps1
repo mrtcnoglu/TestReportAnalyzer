@@ -160,6 +160,32 @@ if (-not (Test-Path $uploadsDir)) {
     New-Item -ItemType Directory -Path $uploadsDir | Out-Null
 }
 
+# .env dosyası kontrolü
+Write-Host "`n.env dosyası kontrol ediliyor..." -ForegroundColor Yellow
+if (-Not (Test-Path "backend\.env")) {
+    Copy-Item "backend\.env.example" "backend\.env"
+    Write-Host ".env dosyası oluşturuldu" -ForegroundColor Green
+    Write-Host "" -ForegroundColor Yellow
+    Write-Host "============================================" -ForegroundColor Cyan
+    Write-Host "ÖNEMLİ: API KEY AYARLARI" -ForegroundColor Yellow
+    Write-Host "============================================" -ForegroundColor Cyan
+    Write-Host "backend\.env dosyasını açıp API key'lerinizi girin!" -ForegroundColor Red
+    Write-Host "" -ForegroundColor Yellow
+    Write-Host "1. Claude API Key almak için:" -ForegroundColor White
+    Write-Host "   https://console.anthropic.com" -ForegroundColor Cyan
+    Write-Host "" -ForegroundColor Yellow
+    Write-Host "2. OpenAI API Key almak için:" -ForegroundColor White
+    Write-Host "   https://platform.openai.com" -ForegroundColor Cyan
+    Write-Host "" -ForegroundColor Yellow
+    Write-Host "3. Key'leri aldıktan sonra:" -ForegroundColor White
+    Write-Host "   notepad backend\.env" -ForegroundColor Cyan
+    Write-Host "   komutu ile dosyayı açıp key'leri yapıştırın" -ForegroundColor White
+    Write-Host "============================================" -ForegroundColor Cyan
+    Write-Host "" -ForegroundColor Yellow
+} else {
+    Write-Host ".env dosyası zaten mevcut" -ForegroundColor Green
+}
+
 if ($nodeAvailable -and $npmRunnable) {
     if (-not $npmExecutable -and $nodeTooling.NpmCliScript) {
         Write-Host "npm komutu PATH içinde bulunamadı; Node.js kurulumundaki npm-cli.js kullanılacak." -ForegroundColor Yellow

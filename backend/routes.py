@@ -1,6 +1,7 @@
 """Flask routes for the TestReportAnalyzer backend."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
@@ -8,10 +9,10 @@ from werkzeug.utils import secure_filename
 
 try:  # pragma: no cover - import flexibility
     from . import database
-    from .pdf_analyzer import analyze_failure, extract_text_from_pdf, parse_test_results
+    from .pdf_analyzer import extract_text_from_pdf, parse_test_results
 except ImportError:  # pragma: no cover
     import database  # type: ignore
-    from pdf_analyzer import analyze_failure, extract_text_from_pdf, parse_test_results  # type: ignore
+    from pdf_analyzer import extract_text_from_pdf, parse_test_results  # type: ignore
 
 reports_bp = Blueprint("reports", __name__)
 
@@ -57,16 +58,14 @@ def upload_report():
     failed_tests = total_tests - passed_tests
 
     for result in parsed_results:
-        failure_meta = {}
-        if result["status"] == "FAIL":
-            failure_meta = analyze_failure(result.get("error_message", ""))
         database.insert_test_result(
             report_id,
             result["test_name"],
             result["status"],
             result.get("error_message", ""),
-            failure_meta.get("failure_reason"),
-            failure_meta.get("suggested_fix"),
+            result.get("failure_reason"),
+            result.get("suggested_fix"),
+            result.get("ai_provider", "rule-based"),
         )
 
     database.update_report_stats(report_id, total_tests, passed_tests, failed_tests)
@@ -115,3 +114,35 @@ def delete_report(report_id: int):
         pass
 
     return jsonify({"message": "Report deleted successfully."})
+
+
+@reports_bp.route("/ai-status", methods=["GET"])
+def get_ai_status():
+    """AI provider durumunu döndür."""
+    provider = (os.getenv("AI_PROVIDER", "none") or "none").strip().lower()
+    if provider not in {"claude", "chatgpt", "both", "none"}:
+        provider = "none"
+    anthropic_key = (os.getenv("ANTHROPIC_API_KEY", "") or "").strip()
+    openai_key = (os.getenv("OPENAI_API_KEY", "") or "").strip()
+
+    claude_available = bool(anthropic_key)
+    chatgpt_available = bool(openai_key)
+
+    active = False
+    if provider == "claude":
+        active = claude_available
+    elif provider == "chatgpt":
+        active = chatgpt_available
+    elif provider == "both":
+        active = claude_available or chatgpt_available
+
+    status = "active" if active else "inactive"
+
+    return jsonify(
+        {
+            "provider": provider or "none",
+            "claude_available": claude_available,
+            "chatgpt_available": chatgpt_available,
+            "status": status,
+        }
+    )

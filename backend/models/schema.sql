@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS test_results (
     error_message TEXT,
     failure_reason TEXT,
     suggested_fix TEXT,
+    ai_provider TEXT DEFAULT 'rule-based',
     FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE
 );
 

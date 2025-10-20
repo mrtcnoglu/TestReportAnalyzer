@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { deleteReport, getAllReports } from "../api";
+import { deleteReport, getAIStatus, getAllReports } from "../api";
 import UploadForm from "./UploadForm";
 
 const SORT_OPTIONS = [
@@ -15,6 +15,12 @@ const Dashboard = () => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [aiStatus, setAIStatus] = useState({
+    provider: "none",
+    status: "inactive",
+    claude_available: false,
+    chatgpt_available: false,
+  });
   const [sortBy, setSortBy] = useState("date");
   const [order, setOrder] = useState("desc");
 
@@ -33,6 +39,19 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadReports();
+  }, []);
+
+  useEffect(() => {
+    const fetchAIStatus = async () => {
+      try {
+        const status = await getAIStatus();
+        setAIStatus(status);
+      } catch (err) {
+        setAIStatus((prev) => ({ ...prev, status: "inactive", provider: "none" }));
+      }
+    };
+
+    fetchAIStatus();
   }, []);
 
   const handleSortChange = (key) => {
@@ -61,6 +80,21 @@ const Dashboard = () => {
 
   return (
     <div>
+      <div className="ai-status-container">
+        <span>AI Provider: </span>
+        {aiStatus.status === "active" ? (
+          <span className="ai-status active">
+            {aiStatus.provider === "claude"
+              ? "🤖 Claude"
+              : aiStatus.provider === "chatgpt"
+              ? "🤖 ChatGPT"
+              : "🤖 AI Aktif"}
+          </span>
+        ) : (
+          <span className="ai-status inactive">📋 Kural Tabanlı</span>
+        )}
+      </div>
+
       <div className="card">
         <h2>Rapor Yükle</h2>
         <UploadForm onUploadSuccess={() => loadReports()} />

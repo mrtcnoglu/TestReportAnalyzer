@@ -65,10 +65,10 @@ const ReportDetail = () => {
       </div>
 
       <h3>Tüm Testler</h3>
-      <TestList tests={tests} />
+      <TestList tests={tests} showAiProvider />
 
       <h3>Başarısız Testler</h3>
-      <TestList tests={failures} />
+      <TestList tests={failures} showAiProvider />
     </div>
   );
 };

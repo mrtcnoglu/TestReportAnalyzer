@@ -1,7 +1,9 @@
 import axios from "axios";
 
+const API_BASE = "http://localhost:5000/api";
+
 const client = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: API_BASE,
   headers: {
     "Content-Type": "application/json",
   },
@@ -35,5 +37,10 @@ export const getFailedTests = async (id) => {
 
 export const deleteReport = async (id) => {
   const response = await client.delete(`/reports/${id}`);
+  return response.data;
+};
+
+export const getAIStatus = async () => {
+  const response = await axios.get(`${API_BASE}/ai-status`);
   return response.data;
 };
