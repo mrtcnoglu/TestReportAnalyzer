@@ -1,61 +1,35 @@
-[CmdletBinding()]
-param(
-  [string]$UiDir
-)
+param([string]$UiDir)
 
-Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
 Write-Host 'React arayüzü http://127.0.0.1:3000 adresinde başlatılıyor...'
 
-try {
-  $npmCommand = Get-Command -Name npm -ErrorAction Stop
-  $npmExecutable = $npmCommand.Path
-}
-catch {
-  throw "npm komutu bulunamadı. Lütfen Node.js ve npm kurulumunu doğrulayın."
-}
-
-if (-not $npmExecutable) {
-  throw "npm komutu bulunamadı. Lütfen Node.js ve npm kurulumunu doğrulayın."
+# 1) NPM yürütücüsünü bul: önce npm.cmd, yoksa npm
+$npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)?.Source
+if (-not $npm) {
+  $npm = (Get-Command npm -ErrorAction Stop).Source
+  $npmCmd = Join-Path (Split-Path $npm) 'npm.cmd'
+  if (Test-Path $npmCmd) { $npm = $npmCmd }
 }
 
-$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+# 2) UI dizini: varsayılan .\frontend, yoksa betik kökü
+$root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $UiDir) {
-  $frontend = Join-Path $scriptRoot 'frontend'
-  $UiDir = if (Test-Path (Join-Path $frontend 'package.json')) { $frontend } else { $scriptRoot }
+  $UiDir = if (Test-Path (Join-Path $root 'frontend\package.json')) { Join-Path $root 'frontend' } else { $root }
+}
+Set-Location $UiDir
+
+# 3) Bağımlılıklar
+if (Test-Path 'package-lock.json') {
+  & $npm ci
+} else {
+  & $npm install
 }
 
-$pkgPath = Join-Path $UiDir 'package.json'
-if (-not (Test-Path $pkgPath)) {
-  throw "package.json bulunamadı: $pkgPath"
-}
+# 4) package.json script seçimi
+$pkg = Get-Content -Raw -Path 'package.json' | ConvertFrom-Json
+$hasStart = $pkg.scripts.PSObject.Properties.Name -contains 'start'
+$hasDev   = $pkg.scripts.PSObject.Properties.Name -contains 'dev'
 
-Push-Location $UiDir
-try {
-  if (Test-Path (Join-Path $UiDir 'package-lock.json')) {
-    & $npmExecutable ci
-  }
-  else {
-    & $npmExecutable install
-  }
-
-  $pkg = Get-Content -Raw -Path $pkgPath | ConvertFrom-Json
-  $scriptNames = if ($pkg.scripts) { $pkg.scripts.PSObject.Properties.Name } else { @() }
-  $hasStart = $scriptNames -contains 'start'
-  $hasDev = $scriptNames -contains 'dev'
-
-  if ($hasStart) {
-    & $npmExecutable run start
-  }
-  elseif ($hasDev) {
-    & $npmExecutable run dev
-  }
-  else {
-    throw "package.json içinde 'start' veya 'dev' script'i yok."
-  }
-}
-finally {
-  Pop-Location
-}
+if     ($hasStart) { & $npm run start }
+elseif ($hasDev)   { & $npm run dev }
+else               { throw "package.json içinde 'start' veya 'dev' script'i yok." }
