@@ -4,8 +4,11 @@ $ErrorActionPreference = 'Stop'
 Write-Host 'React arayüzü http://127.0.0.1:3000 adresinde başlatılıyor...'
 
 # 1) NPM yürütücüsünü bul: önce npm.cmd, yoksa npm
-$npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)?.Source
-if (-not $npm) {
+$npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+if ($npmCommand) {
+  $npm = $npmCommand.Source
+}
+else {
   $npm = (Get-Command npm -ErrorAction Stop).Source
   $npmCmd = Join-Path (Split-Path $npm) 'npm.cmd'
   if (Test-Path $npmCmd) { $npm = $npmCmd }
