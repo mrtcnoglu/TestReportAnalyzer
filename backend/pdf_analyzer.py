@@ -1,32 +1,16 @@
 """Utilities for extracting and interpreting test results from PDF reports."""
 from __future__ import annotations
 
+"""Utilities for extracting and interpreting test results from PDF reports."""
+
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import pdfplumber
 from PyPDF2 import PdfReader
 
-
-FAILURE_PATTERNS: Dict[str, Tuple[str, str]] = {
-    r"timeout": (
-        "Execution timed out",
-        "Increase timeout thresholds or investigate performance bottlenecks.",
-    ),
-    r"nullpointer": (
-        "Null reference encountered",
-        "Add null checks and ensure dependent services return valid data.",
-    ),
-    r"connection refused": (
-        "Service connection failed",
-        "Verify service availability and network connectivity.",
-    ),
-    r"assertion": (
-        "Assertion failed",
-        "Review the expected conditions and update the test or implementation.",
-    ),
-}
+from ai_analyzer import ai_analyzer
 
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
@@ -61,23 +45,46 @@ def parse_test_results(text: str) -> List[Dict[str, str]]:
             continue
         data = match.groupdict()
         status = data.get("status", "").upper()
-        results.append(
-            {
-                "test_name": data.get("name", "Unknown Test").strip(),
-                "status": status,
-                "error_message": data.get("message") or "",
-            }
-        )
+        error_message = data.get("message") or ""
+
+        result: Dict[str, str] = {
+            "test_name": data.get("name", "Unknown Test").strip(),
+            "status": status,
+            "error_message": error_message,
+        }
+
+        if status == "FAIL":
+            failure_reason, suggested_fix, ai_provider = analyze_failure(
+                result["test_name"],
+                error_message,
+                text,
+            )
+            result.update(
+                {
+                    "failure_reason": failure_reason,
+                    "suggested_fix": suggested_fix,
+                    "ai_provider": ai_provider,
+                }
+            )
+        else:
+            result.update(
+                {
+                    "failure_reason": "",
+                    "suggested_fix": "",
+                    "ai_provider": "rule-based",
+                }
+            )
+
+        results.append(result)
+
     return results
 
 
-def analyze_failure(error_message: str) -> Dict[str, str]:
-    """Return inferred failure reason and suggested fix based on message patterns."""
-    message = (error_message or "").lower()
-    for pattern, (reason, fix) in FAILURE_PATTERNS.items():
-        if re.search(pattern, message):
-            return {"failure_reason": reason, "suggested_fix": fix}
-    return {
-        "failure_reason": "Review the error details for root cause analysis.",
-        "suggested_fix": "Consult the logs or stack trace for further investigation.",
-    }
+def analyze_failure(test_name: str, error_message: str, test_context: str = ""):
+    """AI veya rule-based analiz"""
+    result = ai_analyzer.analyze_failure_with_ai(test_name, error_message, test_context)
+    return (
+        result["failure_reason"],
+        result["suggested_fix"],
+        result.get("ai_provider", "rule-based"),
+    )

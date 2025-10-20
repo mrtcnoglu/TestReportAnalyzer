@@ -29,6 +29,10 @@ def init_db() -> None:
     with closing(_connect()) as conn:
         with SCHEMA_PATH.open("r", encoding="utf-8") as schema_file:
             conn.executescript(schema_file.read())
+        try:
+            conn.execute("ALTER TABLE test_results ADD COLUMN ai_provider TEXT DEFAULT 'rule-based'")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
 
@@ -67,15 +71,24 @@ def insert_test_result(
     error_message: Optional[str],
     reason: Optional[str],
     fix: Optional[str],
+    ai_provider: str = "rule-based",
 ) -> None:
     """Insert a single test result entry."""
     with closing(_connect()) as conn:
         conn.execute(
             """
-            INSERT INTO test_results (report_id, test_name, status, error_message, failure_reason, suggested_fix)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO test_results (
+                report_id,
+                test_name,
+                status,
+                error_message,
+                failure_reason,
+                suggested_fix,
+                ai_provider
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (report_id, test_name, status, error_message, reason, fix),
+            (report_id, test_name, status, error_message, reason, fix, ai_provider),
         )
         conn.commit()
 
@@ -123,7 +136,7 @@ def get_failed_tests(report_id: int) -> List[Dict]:
     with closing(_connect()) as conn:
         cursor = conn.execute(
             """
-            SELECT id, test_name, status, error_message, failure_reason, suggested_fix
+            SELECT id, test_name, status, error_message, failure_reason, suggested_fix, ai_provider
             FROM test_results
             WHERE report_id = ? AND status = 'FAIL'
             ORDER BY id ASC
@@ -138,7 +151,7 @@ def get_test_results(report_id: int) -> List[Dict]:
     with closing(_connect()) as conn:
         cursor = conn.execute(
             """
-            SELECT id, test_name, status, error_message, failure_reason, suggested_fix
+            SELECT id, test_name, status, error_message, failure_reason, suggested_fix, ai_provider
             FROM test_results
             WHERE report_id = ?
             ORDER BY id ASC

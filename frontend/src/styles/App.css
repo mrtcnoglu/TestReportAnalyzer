@@ -145,3 +145,56 @@ a:hover {
     font-size: 0.85rem;
   }
 }
+
+/* AI Status Styles */
+.ai-status-container {
+    margin: 20px 0;
+    padding: 10px;
+    background: #f9fafb;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.ai-status {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    margin-left: 10px;
+    font-weight: 500;
+}
+
+.ai-status.active {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.ai-status.inactive {
+    background-color: #f3f4f6;
+    color: #6b7280;
+}
+
+/* AI Badge Styles */
+.ai-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    font-weight: normal;
+}
+
+.ai-badge.claude {
+    background-color: #6366f1;
+    color: white;
+}
+
+.ai-badge.chatgpt {
+    background-color: #10b981;
+    color: white;
+}
+
+.ai-badge.rule-based {
+    background-color: #9ca3af;
+    color: white;
+}
