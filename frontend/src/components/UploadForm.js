@@ -2,7 +2,8 @@ import React, { useRef, useState } from "react";
 import { analyzeReportsWithAI, uploadReport } from "../api";
 
 const MIN_FILES = 1;
-const MAX_FILES = 100;
+const MAX_FILES = 2;
+const MAX_FILES_MESSAGE = "En fazla 2 pdf yükleyebilirsiniz!";
 
 const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisComplete, onClearAnalysis }) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -27,7 +28,7 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
     if (incomingFiles.length > MAX_FILES) {
       return {
         files: [],
-        error: `En fazla ${MAX_FILES} adet PDF yükleyebilirsiniz. Seçilen dosya sayısı: ${incomingFiles.length}.`,
+        error: MAX_FILES_MESSAGE,
       };
     }
 
@@ -78,7 +79,7 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
     if (selectedFiles.length > MAX_FILES) {
       setStatus({
         type: "error",
-        message: `En fazla ${MAX_FILES} adet PDF yükleyebilirsiniz.`,
+        message: MAX_FILES_MESSAGE,
       });
       onAnalysisComplete?.(null);
       return;
@@ -233,10 +234,8 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
           onChange={handleFileChange}
           hidden
         />
-        <p className="drag-area-title">PDF raporlarınızı buraya sürükleyip bırakın</p>
-        <p className="drag-area-subtitle">
-          ya da aşağıdaki butona tıklayarak bilgisayarınızdan en az 1, en fazla 100 PDF seçin.
-        </p>
+        <p className="drag-area-title">PDF Raporlarını Sürükleyin &amp; Bırakın veya Tıklayarak Dosya Seçin</p>
+        <p className="drag-area-subtitle">En fazla 2 pdf yükleyebilirsiniz!</p>
         <button
           type="button"
           className="button button-secondary"

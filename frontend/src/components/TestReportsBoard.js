@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { getReportDownloadUrl } from "../api";
 import { detectReportType, getReportStatusLabel } from "../utils/reportUtils";
 
 const TestReportsBoard = ({ title, reports, analysisEngine }) => {
-  const navigate = useNavigate();
   const [selectedIds, setSelectedIds] = useState([]);
   const [actionMessage, setActionMessage] = useState(null);
 
@@ -23,12 +22,22 @@ const TestReportsBoard = ({ title, reports, analysisEngine }) => {
     );
   };
 
+  const engineLabel = analysisEngine === "claude" ? "Claude" : "ChatGPT";
+
   const handleCompare = () => {
     if (selectedIds.length < 2) {
       setActionMessage("Karşılaştırma için en az iki rapor seçmelisiniz.");
       return;
     }
-    setActionMessage(`${selectedIds.length} rapor karşılaştırma kuyruğuna eklendi.`);
+
+    if (selectedIds.length > 2) {
+      setActionMessage("En Fazla 2 Adet Test Raporunu Karşılaştırma Yapabilirsiniz!");
+      return;
+    }
+
+    setActionMessage(
+      `${selectedIds.length} rapor ${engineLabel} ile karşılaştırılıyor...`
+    );
   };
 
   const handleAnalyze = () => {
@@ -36,8 +45,14 @@ const TestReportsBoard = ({ title, reports, analysisEngine }) => {
       setActionMessage("Analize göndermek için rapor seçin.");
       return;
     }
+
+    if (selectedIds.length > 2) {
+      setActionMessage("En Fazla 2 Adet Test Raporunu Analiz Edebilirsiniz!");
+      return;
+    }
+
     setActionMessage(
-      `${selectedIds.length} rapor ${analysisEngine === "claude" ? "Claude" : "ChatGPT"} ile yeniden analiz ediliyor...`
+      `${selectedIds.length} rapor ${engineLabel} ile yeniden analiz ediliyor...`
     );
   };
 
@@ -47,7 +62,16 @@ const TestReportsBoard = ({ title, reports, analysisEngine }) => {
       return;
     }
     const [reportId] = selectedIds;
-    navigate(`/report/${reportId}`);
+    const report = reports.find((item) => item.id === reportId);
+
+    if (!report) {
+      setActionMessage("Seçilen rapor bulunamadı.");
+      return;
+    }
+
+    const pdfUrl = getReportDownloadUrl(reportId);
+    window.open(pdfUrl, "_blank", "noopener,noreferrer");
+    setActionMessage("PDF raporu yeni sekmede açılıyor...");
   };
 
   return (
