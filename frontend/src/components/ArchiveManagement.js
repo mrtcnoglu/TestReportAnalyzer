@@ -54,7 +54,7 @@ const ArchiveManagement = ({ reports, analysisEngine = "chatgpt" }) => {
   const enrichedReports = useMemo(
     () =>
       reports.map((report) => {
-        const detectedType = detectReportType(report.filename);
+        const detectedType = detectReportType(report);
         const uploadDate = report.upload_date ? new Date(report.upload_date) : null;
         return {
           ...report,
@@ -205,7 +205,7 @@ const ArchiveManagement = ({ reports, analysisEngine = "chatgpt" }) => {
         <div className="card filters-card">
           <h2>
             <span className="card-title-icon" aria-hidden="true">
-              🧰
+              📖
             </span>
             Filtreler
           </h2>

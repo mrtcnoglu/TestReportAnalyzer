@@ -62,3 +62,5 @@ export const resetAllData = async () => {
   const response = await client.post("/reset");
   return response.data;
 };
+
+export const getReportDownloadUrl = (id) => `${API_BASE}/reports/${id}/download`;

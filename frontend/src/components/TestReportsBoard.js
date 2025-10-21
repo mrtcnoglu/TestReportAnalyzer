@@ -11,7 +11,7 @@ const TestReportsBoard = ({ title, reports, analysisEngine }) => {
     () =>
       reports.map((report) => ({
         ...report,
-        detectedType: detectReportType(report.filename),
+        detectedType: detectReportType(report),
         statusLabel: getReportStatusLabel(report),
       })),
     [reports]

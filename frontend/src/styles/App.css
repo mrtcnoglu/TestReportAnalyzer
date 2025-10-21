@@ -554,6 +554,28 @@ a:hover {
   color: var(--muted-color);
 }
 
+.analysis-localized-grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.analysis-localized-card {
+  background-color: rgba(148, 163, 184, 0.12);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.analysis-localized-card h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--primary-color);
+}
+
 .analysis-failure-list {
   margin: 0.75rem 0 0 0;
   padding-left: 1.1rem;
