@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { getAllReports } from "./api";
 import AllReports from "./components/AllReports";
 import ArchiveManagement from "./components/ArchiveManagement";
@@ -27,6 +27,8 @@ const App = () => {
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState("light");
   const [analysisEngine, setAnalysisEngine] = useState("chatgpt");
+  const [searchQuery, setSearchQuery] = useState("");
+  const navigate = useNavigate();
 
   const fetchReports = async () => {
     setLoading(true);
@@ -55,6 +57,28 @@ const App = () => {
     const r10 = reports.filter((report) => detectReportType(report.filename) === "R10 EMC Testi");
     return { r80, r10 };
   }, [reports]);
+
+  const filteredReports = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+    return reports.filter((report) => {
+      const fileName = report.filename?.toLowerCase() ?? "";
+      const detectedType = detectReportType(report.filename)?.toLowerCase() ?? "";
+      return fileName.includes(query) || detectedType.includes(query);
+    });
+  }, [reports, searchQuery]);
+
+  const handleReportSearchSelect = (report) => {
+    if (!report?.id) {
+      return;
+    }
+    navigate(`/report/${report.id}`);
+    setSearchQuery("");
+  };
+
+  const isHome = location.pathname === "/";
 
   const isNavActive = (item) => {
     const detailView = location.pathname.startsWith("/report/");
@@ -103,13 +127,59 @@ const App = () => {
         </nav>
       </aside>
       <div className="main-area">
-        <header className="topbar">
-          <div>
-            <h2>{currentNavLabel}</h2>
-            <p className="muted-text">
-              Analiz Motoru: {analysisEngine === "claude" ? "Claude" : "ChatGPT"}
-            </p>
-          </div>
+        <header className={`topbar ${isHome ? "topbar-home" : ""}`}>
+          {isHome ? (
+            <>
+              <div className="topbar-home-left">
+                <h1 className="topbar-title">AI Destekli Test Analiz Platformu</h1>
+                <p className="muted-text">
+                  Analiz Motoru: {analysisEngine === "claude" ? "Claude" : "ChatGPT"}
+                </p>
+              </div>
+              <div className="topbar-home-right">
+                <div className="report-search">
+                  <span className="search-icon" aria-hidden="true">
+                    🔍
+                  </span>
+                  <input
+                    type="search"
+                    placeholder="Rapor Ara"
+                    value={searchQuery}
+                    aria-label="Rapor Ara"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                  />
+                </div>
+                {searchQuery.trim() && (
+                  <div className="report-search-results">
+                    {filteredReports.length > 0 ? (
+                      filteredReports.map((report) => (
+                        <button
+                          key={report.id}
+                          type="button"
+                          className="report-search-result"
+                          onClick={() => handleReportSearchSelect(report)}
+                        >
+                          <span className="report-search-result-name">{report.filename}</span>
+                          <span className="report-search-result-type">
+                            {detectReportType(report.filename) || "Bilinmeyen"}
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="report-search-empty">Sonuç bulunamadı</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div>
+              <h2>{currentNavLabel}</h2>
+              <p className="muted-text">
+                Analiz Motoru: {analysisEngine === "claude" ? "Claude" : "ChatGPT"}
+              </p>
+            </div>
+          )}
         </header>
         <main className="content-area">
           <Routes>

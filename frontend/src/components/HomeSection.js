@@ -43,30 +43,40 @@ const HomeSection = ({ reports, onRefresh, loading, error }) => {
     <div className="home-section">
       <div className="metrics-grid">
         <div className="metric-card">
-          <span className="metric-label">Toplam Analiz</span>
+          <span className="metric-label">
+            <span className="metric-icon">📊</span>Toplam Analiz
+          </span>
           <span className="metric-value">{metrics.totalAnalyses}</span>
         </div>
         <div className="metric-card">
-          <span className="metric-label">Başarılı Testler</span>
+          <span className="metric-label">
+            <span className="metric-icon metric-icon-success">✔</span>Başarılı Testler
+          </span>
           <span className="metric-value">{metrics.totalPassed}</span>
         </div>
         <div className="metric-card">
-          <span className="metric-label">Başarısız Testler</span>
+          <span className="metric-label">
+            <span className="metric-icon metric-icon-danger">✖</span>Başarısız Testler
+          </span>
           <span className="metric-value">{metrics.totalFailed}</span>
         </div>
         <div className="metric-card">
-          <span className="metric-label">Son 24 Saatte Analiz Edilen Test</span>
+          <span className="metric-label">
+            <span className="metric-icon">⏳</span>Son 24 Saatte Analiz Edilen Test
+          </span>
           <span className="metric-value">{metrics.totalTestsLast24h}</span>
         </div>
       </div>
 
       <div className="card upload-card">
         <div className="card-header">
-          <h2>Ana Sayfa</h2>
+          <h2>PDF Raporlarını Sürükleyin &amp; Bırakın veya Tıklayarak Dosya Seçin</h2>
           {loading && <span className="badge badge-info">Raporlar yükleniyor...</span>}
         </div>
         {error && <div className="alert alert-error">{error}</div>}
         <UploadForm onUploadSuccess={onRefresh} />
+      </div>
+      <div className="card supported-types-card">
         <div className="supported-types">
           <h3>Desteklenen PDF Türleri</h3>
           <ul>
