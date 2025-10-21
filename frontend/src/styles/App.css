@@ -330,6 +330,33 @@ a:hover {
   color: #fff;
 }
 
+.button-accent {
+  background-color: var(--info-color);
+  color: #fff;
+}
+
+.button-danger {
+  background-color: var(--danger-color);
+  color: #fff;
+}
+
+.button-ghost {
+  background-color: transparent;
+  border: 1px solid currentColor;
+  box-shadow: none;
+}
+
+.button-danger.button-ghost {
+  background-color: transparent;
+  color: var(--danger-color);
+  border-color: var(--danger-color);
+}
+
+.button-danger.button-ghost:hover:not(:disabled) {
+  background-color: rgba(220, 38, 38, 0.12);
+  box-shadow: none;
+}
+
 .button:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 12px 20px rgba(37, 99, 235, 0.25);
@@ -407,6 +434,13 @@ a:hover {
   gap: 1.25rem;
 }
 
+.upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
 .drag-area-title {
   font-size: 1.1rem;
   font-weight: 600;
@@ -455,6 +489,79 @@ a:hover {
 
 .supported-types-card {
   margin-top: 1rem;
+}
+
+.supported-types {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.supported-types ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.supported-types li {
+  font-weight: 500;
+}
+
+.reset-card,
+.analysis-summary-card {
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.reset-button {
+  width: 100%;
+}
+
+.reset-help {
+  margin-top: 0.5rem;
+}
+
+.analysis-summary-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  text-align: left;
+}
+
+.analysis-summary-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.analysis-summary-file {
+  color: var(--primary-color);
+}
+
+.analysis-summary-metrics {
+  color: var(--muted-color);
+}
+
+.analysis-failure-list {
+  margin: 0.75rem 0 0 0;
+  padding-left: 1.1rem;
+  color: var(--danger-color);
+}
+
+.analysis-failure-list li {
+  margin-bottom: 0.35rem;
 }
 
 .two-column-grid {
@@ -693,7 +800,7 @@ a:hover {
 
 .all-reports-list li {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto auto;
   gap: 1rem;
   align-items: center;
   padding-bottom: 0.75rem;

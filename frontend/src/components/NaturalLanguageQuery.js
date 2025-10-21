@@ -107,7 +107,7 @@ const NaturalLanguageQuery = ({ reports, analysisEngine }) => {
       </div>
 
       <div className="schema-explorer card">
-        <h2>Şema Gezgini</h2>
+        <h2>🌍 Genel Özet</h2>
         <p className="muted-text">
           Raporlardan çıkarılan temel alanlara hızlı bir bakış.
         </p>

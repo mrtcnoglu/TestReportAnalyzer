@@ -175,3 +175,14 @@ def delete_report(report_id: int) -> Optional[str]:
         conn.execute("DELETE FROM reports WHERE id = ?", (report_id,))
         conn.commit()
         return pdf_path
+
+
+def clear_all_data() -> List[str]:
+    """Delete all reports and test results, returning removed PDF paths."""
+    with closing(_connect()) as conn:
+        cursor = conn.execute("SELECT pdf_path FROM reports")
+        pdf_paths = [row[0] for row in cursor.fetchall() if row[0]]
+        conn.execute("DELETE FROM test_results")
+        conn.execute("DELETE FROM reports")
+        conn.commit()
+        return pdf_paths

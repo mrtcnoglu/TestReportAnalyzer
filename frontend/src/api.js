@@ -44,3 +44,21 @@ export const getAIStatus = async () => {
   const response = await axios.get(`${API_BASE}/ai-status`);
   return response.data;
 };
+
+export const analyzeReportsWithAI = async (files, engine) => {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append("files", file);
+  });
+  formData.append("engine", engine);
+
+  const response = await client.post("/analyze-files", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+};
+
+export const resetAllData = async () => {
+  const response = await client.post("/reset");
+  return response.data;
+};

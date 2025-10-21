@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from flask import Blueprint, current_app, jsonify, request
 from werkzeug.utils import secure_filename
@@ -144,5 +145,129 @@ def get_ai_status():
             "claude_available": claude_available,
             "chatgpt_available": chatgpt_available,
             "status": status,
+        }
+    )
+
+
+@reports_bp.route("/reset", methods=["POST"])
+def reset_all_data():
+    """Delete all stored reports, analyses and uploaded PDF files."""
+
+    pdf_paths = database.clear_all_data()
+    removed_files = 0
+
+    for pdf_path in pdf_paths:
+        try:
+            Path(pdf_path).unlink(missing_ok=True)
+            removed_files += 1
+        except OSError:
+            pass
+
+    upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
+    if upload_folder.exists():
+        for orphan in upload_folder.glob("**/*"):
+            if orphan.is_file():
+                try:
+                    orphan.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    return jsonify(
+        {
+            "message": "Tüm raporlar ve test sonuçları sıfırlandı.",
+            "deleted_reports": len(pdf_paths),
+            "deleted_files": removed_files,
+        }
+    )
+
+
+@reports_bp.route("/analyze-files", methods=["POST"])
+def analyze_files_with_ai():
+    """Analyse uploaded PDF files and return AI flavoured summaries."""
+
+    files = request.files.getlist("files")
+    if not files:
+        return _json_error("Analiz için en az bir PDF dosyası gönderin.", 400)
+
+    engine = (request.form.get("engine") or "chatgpt").strip().lower()
+    engine_label = "Claude" if engine == "claude" else "ChatGPT"
+
+    summaries = []
+    processed_files = 0
+
+    for storage in files:
+        if not storage or storage.filename == "":
+            continue
+
+        filename = storage.filename
+        if not filename.lower().endswith(".pdf"):
+            continue
+
+        with NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            storage.save(temp_file.name)
+            temp_path = Path(temp_file.name)
+
+        try:
+            text = extract_text_from_pdf(temp_path)
+            parsed_results = parse_test_results(text)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            temp_path.unlink(missing_ok=True)
+            return _json_error(f"PDF analizi başarısız oldu: {exc}", 500)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+        processed_files += 1
+        total_tests = len(parsed_results)
+        passed_tests = sum(1 for result in parsed_results if result.get("status") == "PASS")
+        failed_tests = total_tests - passed_tests
+
+        failure_details = [
+            {
+                "test_name": result.get("test_name", "Bilinmeyen Test"),
+                "failure_reason": result.get("failure_reason", ""),
+                "suggested_fix": result.get("suggested_fix", ""),
+            }
+            for result in parsed_results
+            if result.get("status") == "FAIL"
+        ]
+
+        if total_tests == 0:
+            summary_text = (
+                f"{engine_label}, {filename} raporunda analiz edilebilecek test kaydı bulamadı."
+            )
+        else:
+            summary_text = (
+                f"{engine_label}, {filename} raporunu inceledi. Toplam {total_tests} testin "
+                f"{passed_tests} tanesi geçti, {failed_tests} tanesi başarısız oldu."
+            )
+            if failure_details:
+                highlights = ", ".join(
+                    f"{detail['test_name']}: {detail['failure_reason'] or 'Sebep belirtilmedi'}"
+                    for detail in failure_details[:3]
+                )
+                summary_text += f" Kritik bulgular: {highlights}."
+            else:
+                summary_text += " Tüm testler başarıyla tamamlandı."
+
+        summaries.append(
+            {
+                "filename": filename,
+                "total_tests": total_tests,
+                "passed_tests": passed_tests,
+                "failed_tests": failed_tests,
+                "engine": engine_label,
+                "summary": summary_text,
+                "failures": failure_details,
+            }
+        )
+
+    if processed_files == 0:
+        return _json_error("Analiz için geçerli PDF dosyası bulunamadı.", 400)
+
+    return jsonify(
+        {
+            "engine": engine_label,
+            "summaries": summaries,
+            "message": f"{processed_files} dosya {engine_label} ile analiz edildi.",
         }
     )

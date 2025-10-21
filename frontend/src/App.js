@@ -191,6 +191,7 @@ const App = () => {
                   onRefresh={fetchReports}
                   loading={loading}
                   error={error}
+                  analysisEngine={analysisEngine}
                 />
               }
             />
@@ -224,7 +225,10 @@ const App = () => {
                 />
               }
             />
-            <Route path="/reports" element={<AllReports reports={reports} />} />
+            <Route
+              path="/reports"
+              element={<AllReports reports={reports} onReportDeleted={fetchReports} />}
+            />
             <Route
               path="/settings"
               element={

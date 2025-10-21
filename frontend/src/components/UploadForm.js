@@ -1,13 +1,14 @@
 import React, { useRef, useState } from "react";
-import { uploadReport } from "../api";
+import { analyzeReportsWithAI, uploadReport } from "../api";
 
 const MIN_FILES = 1;
 const MAX_FILES = 100;
 
-const UploadForm = ({ onUploadSuccess }) => {
+const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisComplete, onClearAnalysis }) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [status, setStatus] = useState({ type: null, message: "" });
   const [isUploading, setIsUploading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -48,6 +49,9 @@ const UploadForm = ({ onUploadSuccess }) => {
 
     setSelectedFiles(files);
     setStatus({ type: null, message: "" });
+    if (files.length > 0 && typeof onClearAnalysis === "function") {
+      onClearAnalysis();
+    }
   };
 
   const handleFileChange = (event) => {
@@ -119,6 +123,44 @@ const UploadForm = ({ onUploadSuccess }) => {
     }
 
     setIsUploading(false);
+  };
+
+  const handleAnalyzeWithAI = async (event) => {
+    event.preventDefault();
+
+    if (selectedFiles.length === 0) {
+      setStatus({ type: "error", message: "AI analizi için lütfen en az bir PDF seçin." });
+      onAnalysisComplete?.(null);
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setStatus({ type: null, message: "" });
+
+    try {
+      const result = await analyzeReportsWithAI(selectedFiles, analysisEngine);
+      setStatus({ type: "success", message: result.message });
+      onAnalysisComplete?.(result);
+    } catch (error) {
+      const message =
+        error?.response?.data?.error || "AI analizi sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
+      setStatus({ type: "error", message });
+      onAnalysisComplete?.(null);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleClearSelection = (event) => {
+    event.preventDefault();
+    setSelectedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    setStatus({ type: null, message: "" });
+    if (typeof onClearAnalysis === "function") {
+      onClearAnalysis();
+    }
   };
 
   const handleDragOver = (event) => {
@@ -201,9 +243,31 @@ const UploadForm = ({ onUploadSuccess }) => {
           </div>
         )}
       </div>
-      <button className="button button-primary" type="submit" disabled={isUploading}>
-        {isUploading ? "Yükleniyor..." : "PDF Yükle"}
-      </button>
+      <div className="upload-actions">
+        <button
+          type="button"
+          className="button button-accent"
+          onClick={handleAnalyzeWithAI}
+          disabled={isUploading || isAnalyzing || selectedFiles.length === 0}
+        >
+          {isAnalyzing ? "Analiz Ediliyor..." : "AI İle Analiz Et"}
+        </button>
+        <button
+          className="button button-primary"
+          type="submit"
+          disabled={isUploading || selectedFiles.length === 0}
+        >
+          {isUploading ? "Yükleniyor..." : "PDF Yükle"}
+        </button>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={handleClearSelection}
+          disabled={isUploading || isAnalyzing || selectedFiles.length === 0}
+        >
+          Temizle
+        </button>
+      </div>
       {status.type && (
         <div
           className={`alert ${
