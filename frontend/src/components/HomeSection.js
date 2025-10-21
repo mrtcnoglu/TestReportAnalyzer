@@ -69,10 +69,11 @@ const HomeSection = ({ reports, onRefresh, loading, error }) => {
       </div>
 
       <div className="card upload-card">
-        <div className="card-header">
-          <h2>PDF Raporlarını Sürükleyin &amp; Bırakın veya Tıklayarak Dosya Seçin</h2>
-          {loading && <span className="badge badge-info">Raporlar yükleniyor...</span>}
-        </div>
+        {loading && (
+          <div className="card-header">
+            <span className="badge badge-info">Raporlar yükleniyor...</span>
+          </div>
+        )}
         {error && <div className="alert alert-error">{error}</div>}
         <UploadForm onUploadSuccess={onRefresh} />
       </div>
