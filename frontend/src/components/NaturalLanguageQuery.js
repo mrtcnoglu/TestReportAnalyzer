@@ -17,7 +17,7 @@ const NaturalLanguageQuery = ({ reports, analysisEngine }) => {
   const schemaSummaries = useMemo(
     () =>
       reports.map((report) => {
-        const pdfType = detectReportType(report.filename);
+        const pdfType = detectReportType(report);
         const total = Number(report.total_tests ?? 0);
         const passed = Number(report.passed_tests ?? 0);
         const failed = Number(report.failed_tests ?? 0);

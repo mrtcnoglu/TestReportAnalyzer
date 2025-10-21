@@ -7,8 +7,7 @@ const MAX_FILES = 100;
 const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisComplete, onClearAnalysis }) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [status, setStatus] = useState({ type: null, message: "" });
-  const [isUploading, setIsUploading] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -55,13 +54,16 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
   };
 
   const handleFileChange = (event) => {
+    if (isProcessing) {
+      return;
+    }
     handleFileSelection(event.target.files);
     if (event.target) {
       event.target.value = "";
     }
   };
 
-  const handleSubmit = async (event) => {
+  const handleUploadAndAnalyze = async (event) => {
     event.preventDefault();
 
     if (selectedFiles.length < MIN_FILES) {
@@ -69,6 +71,7 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
         type: "error",
         message: `Lütfen en az ${MIN_FILES} adet PDF dosyası seçin.`,
       });
+      onAnalysisComplete?.(null);
       return;
     }
 
@@ -77,10 +80,11 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
         type: "error",
         message: `En fazla ${MAX_FILES} adet PDF yükleyebilirsiniz.`,
       });
+      onAnalysisComplete?.(null);
       return;
     }
 
-    setIsUploading(true);
+    setIsProcessing(true);
     setStatus({ type: null, message: "" });
 
     let successCount = 0;
@@ -96,63 +100,70 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
       }
     }
 
+    let analysisResult = null;
+    let analysisErrorMessage = "";
+
+    if (successCount > 0) {
+      try {
+        analysisResult = await analyzeReportsWithAI(selectedFiles, analysisEngine);
+      } catch (error) {
+        analysisErrorMessage =
+          error?.response?.data?.error || "AI analizi sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
+      }
+    }
+
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
     setSelectedFiles([]);
 
     if (successCount > 0 && typeof onUploadSuccess === "function") {
-      onUploadSuccess();
+      await onUploadSuccess();
     }
 
-    if (failCount === 0) {
-      setStatus({
-        type: "success",
-        message: `${successCount} rapor başarıyla yüklendi.`,
-      });
+    if (analysisResult) {
+      onAnalysisComplete?.(analysisResult);
+    } else if (analysisErrorMessage) {
+      onAnalysisComplete?.(null);
     } else if (successCount === 0) {
-      setStatus({
-        type: "error",
-        message: "Seçilen raporlar yüklenemedi. Lütfen tekrar deneyin.",
-      });
+      onAnalysisComplete?.(null);
+    }
+
+    const messages = [];
+    if (successCount === 0) {
+      messages.push("Seçilen raporlar yüklenemedi. Lütfen tekrar deneyin.");
+    } else if (failCount === 0) {
+      messages.push(`${successCount} rapor başarıyla yüklendi.`);
     } else {
-      setStatus({
-        type: "warning",
-        message: `${successCount} rapor yüklendi, ${failCount} rapor yüklenemedi.`,
-      });
+      messages.push(`${successCount} rapor yüklendi, ${failCount} rapor yüklenemedi.`);
     }
 
-    setIsUploading(false);
-  };
-
-  const handleAnalyzeWithAI = async (event) => {
-    event.preventDefault();
-
-    if (selectedFiles.length === 0) {
-      setStatus({ type: "error", message: "AI analizi için lütfen en az bir PDF seçin." });
-      onAnalysisComplete?.(null);
-      return;
+    if (analysisResult?.message) {
+      messages.push(analysisResult.message);
     }
 
-    setIsAnalyzing(true);
-    setStatus({ type: null, message: "" });
-
-    try {
-      const result = await analyzeReportsWithAI(selectedFiles, analysisEngine);
-      setStatus({ type: "success", message: result.message });
-      onAnalysisComplete?.(result);
-    } catch (error) {
-      const message =
-        error?.response?.data?.error || "AI analizi sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
-      setStatus({ type: "error", message });
-      onAnalysisComplete?.(null);
-    } finally {
-      setIsAnalyzing(false);
+    if (analysisErrorMessage) {
+      messages.push(analysisErrorMessage);
     }
+
+    let statusType = "success";
+    if (analysisErrorMessage) {
+      statusType = "error";
+    } else if (successCount === 0) {
+      statusType = "error";
+    } else if (failCount > 0) {
+      statusType = "warning";
+    }
+
+    setStatus({ type: statusType, message: messages.join(" ") });
+    setIsProcessing(false);
   };
 
   const handleClearSelection = (event) => {
     event.preventDefault();
+    if (isProcessing) {
+      return;
+    }
     setSelectedFiles([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -166,6 +177,9 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
   const handleDragOver = (event) => {
     event.preventDefault();
     event.stopPropagation();
+    if (isProcessing) {
+      return;
+    }
     setIsDragging(true);
   };
 
@@ -179,6 +193,9 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(false);
+    if (isProcessing) {
+      return;
+    }
     handleFileSelection(event.dataTransfer?.files);
   };
 
@@ -187,13 +204,17 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
   };
 
   return (
-    <form className="upload-form" onSubmit={handleSubmit}>
+    <form className="upload-form" onSubmit={handleUploadAndAnalyze}>
       <div
         className={`drag-area ${isDragging ? "drag-active" : ""}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={openFileDialog}
+        onClick={() => {
+          if (!isProcessing) {
+            openFileDialog();
+          }
+        }}
         role="button"
         tabIndex={0}
         onKeyDown={(event) => {
@@ -221,9 +242,11 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
           className="button button-secondary"
           onClick={(event) => {
             event.stopPropagation();
-            openFileDialog();
+            if (!isProcessing) {
+              openFileDialog();
+            }
           }}
-          disabled={isUploading}
+          disabled={isProcessing}
         >
           Dosya Seç
         </button>
@@ -245,25 +268,17 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
       </div>
       <div className="upload-actions">
         <button
-          type="button"
-          className="button button-accent"
-          onClick={handleAnalyzeWithAI}
-          disabled={isUploading || isAnalyzing || selectedFiles.length === 0}
-        >
-          {isAnalyzing ? "Analiz Ediliyor..." : "AI İle Analiz Et"}
-        </button>
-        <button
           className="button button-primary"
           type="submit"
-          disabled={isUploading || selectedFiles.length === 0}
+          disabled={isProcessing || selectedFiles.length === 0}
         >
-          {isUploading ? "Yükleniyor..." : "PDF Yükle"}
+          {isProcessing ? "İşleniyor..." : "PDF Yükle ve AI ile Analiz Et"}
         </button>
         <button
           type="button"
           className="button button-secondary"
           onClick={handleClearSelection}
-          disabled={isUploading || isAnalyzing || selectedFiles.length === 0}
+          disabled={isProcessing || selectedFiles.length === 0}
         >
           Temizle
         </button>

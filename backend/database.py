@@ -33,18 +33,23 @@ def init_db() -> None:
             conn.execute("ALTER TABLE test_results ADD COLUMN ai_provider TEXT DEFAULT 'rule-based'")
         except sqlite3.OperationalError:
             pass
+        try:
+            conn.execute("ALTER TABLE reports ADD COLUMN test_type TEXT DEFAULT 'unknown'")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
 
-def insert_report(filename: str, pdf_path: str) -> int:
+def insert_report(filename: str, pdf_path: str, test_type: str = "unknown") -> int:
     """Insert a new report record and return its ID."""
+    normalized_type = (test_type or "unknown").strip().lower()
     with closing(_connect()) as conn:
         cursor = conn.execute(
             """
-            INSERT INTO reports (filename, pdf_path)
-            VALUES (?, ?)
+            INSERT INTO reports (filename, pdf_path, test_type)
+            VALUES (?, ?, ?)
             """,
-            (filename, pdf_path),
+            (filename, pdf_path, normalized_type),
         )
         conn.commit()
         return int(cursor.lastrowid)
@@ -108,7 +113,7 @@ def get_all_reports(sort_by: str = "date", order: str = "desc") -> List[Dict]:
     with closing(_connect()) as conn:
         cursor = conn.execute(
             f"""
-            SELECT id, filename, upload_date, total_tests, passed_tests, failed_tests
+            SELECT id, filename, upload_date, total_tests, passed_tests, failed_tests, test_type
             FROM reports
             ORDER BY {column} {direction}
             """
@@ -121,7 +126,7 @@ def get_report_by_id(report_id: int) -> Optional[Dict]:
     with closing(_connect()) as conn:
         cursor = conn.execute(
             """
-            SELECT id, filename, upload_date, total_tests, passed_tests, failed_tests, pdf_path
+            SELECT id, filename, upload_date, total_tests, passed_tests, failed_tests, pdf_path, test_type
             FROM reports
             WHERE id = ?
             """,

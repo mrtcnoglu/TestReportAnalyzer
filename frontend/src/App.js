@@ -25,7 +25,7 @@ const App = () => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [theme, setTheme] = useState("light");
+  const [theme, setTheme] = useState("dark");
   const [analysisEngine, setAnalysisEngine] = useState("chatgpt");
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
@@ -53,8 +53,8 @@ const App = () => {
   }, [theme]);
 
   const reportGroups = useMemo(() => {
-    const r80 = reports.filter((report) => detectReportType(report.filename) === "R80 Darbe Testi");
-    const r10 = reports.filter((report) => detectReportType(report.filename) === "R10 EMC Testi");
+    const r80 = reports.filter((report) => detectReportType(report) === "R80 Darbe Testi");
+    const r10 = reports.filter((report) => detectReportType(report) === "R10 EMC Testi");
     return { r80, r10 };
   }, [reports]);
 
@@ -65,7 +65,7 @@ const App = () => {
     }
     return reports.filter((report) => {
       const fileName = report.filename?.toLowerCase() ?? "";
-      const detectedType = detectReportType(report.filename)?.toLowerCase() ?? "";
+      const detectedType = detectReportType(report)?.toLowerCase() ?? "";
       return fileName.includes(query) || detectedType.includes(query);
     });
   }, [reports, searchQuery]);
@@ -161,7 +161,7 @@ const App = () => {
                         >
                           <span className="report-search-result-name">{report.filename}</span>
                           <span className="report-search-result-type">
-                            {detectReportType(report.filename) || "Bilinmeyen"}
+                            {detectReportType(report) || "Bilinmeyen"}
                           </span>
                         </button>
                       ))

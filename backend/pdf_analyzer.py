@@ -5,12 +5,44 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import pdfplumber
 from PyPDF2 import PdfReader
 
 from ai_analyzer import ai_analyzer
+
+
+REPORT_TYPE_LABELS = {
+    "r80": "R80 Darbe Testi",
+    "r10": "R10 EMC Testi",
+    "unknown": "Bilinmeyen",
+}
+
+_REPORT_TYPE_KEYWORDS = {
+    "r80": [
+        "ece r80",
+        "r80",
+        "darbe",
+        "impact",
+        "collision",
+        "crash",
+        "seat strength",
+        "aufprall",
+        "stoß",
+    ],
+    "r10": [
+        "ece r10",
+        "r10",
+        "emc",
+        "electromagnetic",
+        "elektromanyetik",
+        "elektromagnetische",
+        "störfestigkeit",
+        "radiated",
+        "conducted",
+    ],
+}
 
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
@@ -31,6 +63,56 @@ TEST_RESULT_PATTERN = re.compile(
     r"^(?P<name>[^\n]+?)[\s:-]+(?P<status>PASS|FAIL)(?:[\s:-]+(?P<message>.*))?$",
     re.IGNORECASE,
 )
+
+
+def infer_report_type(text: str, filename: str = "") -> Tuple[str, str]:
+    """Infer whether a report belongs to R80 or R10 based on its contents."""
+
+    haystack = f"{filename}\n{text}".lower()
+    scores = {key: 0 for key in _REPORT_TYPE_KEYWORDS}
+
+    for key, keywords in _REPORT_TYPE_KEYWORDS.items():
+        score = 0
+        for keyword in keywords:
+            occurrences = haystack.count(keyword)
+            if occurrences <= 0:
+                continue
+            weight = 2 if keyword.startswith("ece") or " " in keyword else 1
+            score += occurrences * weight
+        scores[key] = score
+
+    filename_lower = (filename or "").lower()
+    if "r80" in filename_lower or "darbe" in filename_lower:
+        scores["r80"] += 2
+    if "r10" in filename_lower or "emc" in filename_lower:
+        scores["r10"] += 2
+
+    if scores["r80"] == scores["r10"]:
+        if scores["r80"] == 0:
+            return "unknown", REPORT_TYPE_LABELS["unknown"]
+
+        r80_index = haystack.find("ece r80")
+        if r80_index == -1:
+            r80_index = haystack.find("r80")
+        r10_index = haystack.find("ece r10")
+        if r10_index == -1:
+            r10_index = haystack.find("r10")
+
+        if r80_index != -1 and (r10_index == -1 or r80_index < r10_index):
+            inferred_type = "r80"
+        elif r10_index != -1:
+            inferred_type = "r10"
+        elif "darbe" in haystack:
+            inferred_type = "r80"
+        elif "emc" in haystack:
+            inferred_type = "r10"
+        else:
+            inferred_type = "unknown"
+    else:
+        inferred_type = "r80" if scores["r80"] > scores["r10"] else "r10"
+
+    label = REPORT_TYPE_LABELS.get(inferred_type, REPORT_TYPE_LABELS["unknown"])
+    return inferred_type, label
 
 
 def parse_test_results(text: str) -> List[Dict[str, str]]:

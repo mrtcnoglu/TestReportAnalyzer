@@ -3,6 +3,12 @@ import UploadForm from "./UploadForm";
 import { resetAllData } from "../api";
 import { detectReportType } from "../utils/reportUtils";
 
+const LANGUAGE_LABELS = {
+  tr: "Türkçe",
+  en: "English",
+  de: "Deutsch",
+};
+
 const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => {
   const [analysisSummaries, setAnalysisSummaries] = useState([]);
   const [analysisInfo, setAnalysisInfo] = useState(null);
@@ -24,7 +30,7 @@ const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => 
         acc.totalPassed += passed;
         acc.totalFailed += failed;
         acc.totalTestsLast24h += isWithin24h ? total : 0;
-        acc.types.add(detectReportType(report.filename));
+        acc.types.add(detectReportType(report));
         return acc;
       },
       {
@@ -165,10 +171,12 @@ const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => 
         <h3>Analiz Özeti</h3>
         <p className="muted-text">
           {analysisInfo?.message
-            ? `${analysisInfo.engine} tarafından oluşturulan en güncel özet aşağıdadır.`
-            : "AI analizi gerçekleştirmek için PDF seçip 'AI İle Analiz Et' butonuna tıklayın."}
+            ? `${analysisInfo.engine} tarafından oluşturulan en güncel çok dilli özet aşağıdadır.`
+            : "AI analizi gerçekleştirmek için PDF seçip 'PDF Yükle ve AI ile Analiz Et' butonuna tıklayın."}
         </p>
-        {analysisInfo?.message && <div className="alert alert-info">{analysisInfo.message}</div>}
+        {analysisInfo?.message && (
+          <div className="alert alert-info">{analysisInfo.message}</div>
+        )}
         {analysisSummaries.length === 0 ? (
           <p className="muted-text">Gösterilecek bir analiz özeti bulunmuyor.</p>
         ) : (
@@ -181,7 +189,28 @@ const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => 
                     {item.passed_tests}/{item.total_tests} PASS · {item.failed_tests} FAIL
                   </span>
                 </div>
+                {item.report_type_label && (
+                  <p className="muted-text">Analiz edilen test türü: {item.report_type_label}</p>
+                )}
                 <p>{item.summary}</p>
+                {item.condition_evaluation && (
+                  <p className="muted-text">{item.condition_evaluation}</p>
+                )}
+                {item.improvement_overview && (
+                  <p className="muted-text">{item.improvement_overview}</p>
+                )}
+                {item.localized_summaries && (
+                  <div className="analysis-localized-grid">
+                    {Object.entries(item.localized_summaries).map(([languageKey, content]) => (
+                      <div className="analysis-localized-card" key={`${item.filename}-${languageKey}`}>
+                        <h4>{LANGUAGE_LABELS[languageKey] || languageKey.toUpperCase()}</h4>
+                        <p>{content.summary}</p>
+                        <p className="muted-text">{content.conditions}</p>
+                        <p className="muted-text">{content.improvements}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {item.failures?.length > 0 && (
                   <ul className="analysis-failure-list">
                     {item.failures.map((failure) => (

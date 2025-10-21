@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { deleteReport } from "../api";
+import { deleteReport, getReportDownloadUrl } from "../api";
 
 const AllReports = ({ reports, onReportDeleted }) => {
   const [items, setItems] = useState(reports);
@@ -61,9 +60,14 @@ const AllReports = ({ reports, onReportDeleted }) => {
             <li key={report.id}>
               <span className="report-name">{report.filename}</span>
               <span className="report-date">{new Date(report.upload_date).toLocaleString()}</span>
-              <Link className="report-link" to={`/report/${report.id}`}>
+              <a
+                className="report-link"
+                href={getReportDownloadUrl(report.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Görüntüle
-              </Link>
+              </a>
               <button
                 type="button"
                 className="button button-danger button-ghost"

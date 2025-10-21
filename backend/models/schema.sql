@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS reports (
     total_tests INTEGER DEFAULT 0,
     passed_tests INTEGER DEFAULT 0,
     failed_tests INTEGER DEFAULT 0,
-    pdf_path TEXT NOT NULL
+    pdf_path TEXT NOT NULL,
+    test_type TEXT DEFAULT 'unknown'
 );
 
 CREATE TABLE IF NOT EXISTS test_results (
