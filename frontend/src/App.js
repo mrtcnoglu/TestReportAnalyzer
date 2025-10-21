@@ -1,24 +1,173 @@
-import React from "react";
-import { Link, Route, Routes } from "react-router-dom";
-import Dashboard from "./components/Dashboard";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { getAllReports } from "./api";
+import AllReports from "./components/AllReports";
+import ArchiveManagement from "./components/ArchiveManagement";
+import HomeSection from "./components/HomeSection";
+import NaturalLanguageQuery from "./components/NaturalLanguageQuery";
 import ReportDetail from "./components/ReportDetail";
+import SettingsPanel from "./components/SettingsPanel";
+import TestReportsBoard from "./components/TestReportsBoard";
+import { detectReportType } from "./utils/reportUtils";
+
+const NAV_ITEMS = [
+  { path: "/", label: "Ana Sayfa", exact: true },
+  { path: "/archive", label: "Arşiv Yönetimi" },
+  { path: "/query", label: "Doğal Dil Sorgusu" },
+  { path: "/r80", label: "R80 Darbe Testleri" },
+  { path: "/r10", label: "R10 EMC Testleri" },
+  { path: "/reports", label: "Raporlar" },
+  { path: "/settings", label: "Ayarlar" },
+];
 
 const App = () => {
+  const location = useLocation();
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [theme, setTheme] = useState("light");
+  const [analysisEngine, setAnalysisEngine] = useState("chatgpt");
+
+  const fetchReports = async () => {
+    setLoading(true);
+    try {
+      const data = await getAllReports();
+      setReports(data);
+      setError(null);
+    } catch (err) {
+      setError("Raporlar yüklenemedi. Lütfen daha sonra tekrar deneyin.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.remove("light-theme", "dark-theme");
+    document.body.classList.add(`${theme}-theme`);
+  }, [theme]);
+
+  const reportGroups = useMemo(() => {
+    const r80 = reports.filter((report) => detectReportType(report.filename) === "R80 Darbe Testi");
+    const r10 = reports.filter((report) => detectReportType(report.filename) === "R10 EMC Testi");
+    return { r80, r10 };
+  }, [reports]);
+
+  const isNavActive = (item) => {
+    const detailView = location.pathname.startsWith("/report/");
+    if (item.exact) {
+      return location.pathname === item.path;
+    }
+    if (item.path === "/reports") {
+      return location.pathname.startsWith(item.path) || detailView;
+    }
+    return location.pathname.startsWith(item.path);
+  };
+
+  const currentNavLabel = useMemo(() => {
+    const detailView = location.pathname.startsWith("/report/");
+    if (detailView) {
+      return "Rapor Detayı";
+    }
+    const current = NAV_ITEMS.find((item) => {
+      if (item.exact) {
+        return location.pathname === item.path;
+      }
+      if (item.path === "/reports") {
+        return location.pathname.startsWith(item.path) || detailView;
+      }
+      return location.pathname.startsWith(item.path);
+    });
+    return current?.label ?? "";
+  }, [location.pathname]);
+
   return (
-    <div className="app-container">
-      <header className="app-header">
-        <h1>Test Report Analyzer</h1>
-        <nav>
-          <Link to="/">Ana Sayfa</Link>
+    <div className={`app-root ${theme}-theme`}>
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <h1>Test Report Analyzer</h1>
+        </div>
+        <nav className="sidebar-nav">
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={isNavActive(item) ? "active" : ""}
+            >
+              {item.label}
+            </Link>
+          ))}
         </nav>
-      </header>
-      <main className="app-main">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/report/:id" element={<ReportDetail />} />
-        </Routes>
-      </main>
-      <footer className="app-footer">© {new Date().getFullYear()} Test Report Analyzer</footer>
+      </aside>
+      <div className="main-area">
+        <header className="topbar">
+          <div>
+            <h2>{currentNavLabel}</h2>
+            <p className="muted-text">
+              Analiz Motoru: {analysisEngine === "claude" ? "Claude" : "ChatGPT"}
+            </p>
+          </div>
+        </header>
+        <main className="content-area">
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <HomeSection
+                  reports={reports}
+                  onRefresh={fetchReports}
+                  loading={loading}
+                  error={error}
+                />
+              }
+            />
+            <Route
+              path="/archive"
+              element={<ArchiveManagement reports={reports} onRefresh={fetchReports} />}
+            />
+            <Route
+              path="/query"
+              element={<NaturalLanguageQuery reports={reports} analysisEngine={analysisEngine} />}
+            />
+            <Route
+              path="/r80"
+              element={
+                <TestReportsBoard
+                  title="R80 Darbe Testleri"
+                  reports={reportGroups.r80}
+                  analysisEngine={analysisEngine}
+                />
+              }
+            />
+            <Route
+              path="/r10"
+              element={
+                <TestReportsBoard
+                  title="R10 EMC Testleri"
+                  reports={reportGroups.r10}
+                  analysisEngine={analysisEngine}
+                />
+              }
+            />
+            <Route path="/reports" element={<AllReports reports={reports} />} />
+            <Route
+              path="/settings"
+              element={
+                <SettingsPanel
+                  theme={theme}
+                  onThemeChange={setTheme}
+                  analysisEngine={analysisEngine}
+                  onEngineChange={setAnalysisEngine}
+                />
+              }
+            />
+            <Route path="/report/:id" element={<ReportDetail />} />
+          </Routes>
+        </main>
+      </div>
     </div>
   );
 };
