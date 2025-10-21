@@ -1,62 +1,124 @@
 import React, { useRef, useState } from "react";
 import { uploadReport } from "../api";
 
+const MIN_FILES = 1;
+const MAX_FILES = 100;
+
 const UploadForm = ({ onUploadSuccess }) => {
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [status, setStatus] = useState({ type: null, message: "" });
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleFileSelection = (file) => {
-    if (!file) {
-      return;
+  const sanitizeFiles = (fileList) => {
+    const incomingFiles = Array.from(fileList ?? []);
+
+    if (incomingFiles.length === 0) {
+      return { files: [], error: "Lütfen en az bir PDF seçin." };
     }
 
-    if (file.type !== "application/pdf") {
-      setStatus({ type: "error", message: "Lütfen PDF formatında bir dosya yükleyin." });
-      setSelectedFile(null);
+    const nonPdfFiles = incomingFiles.filter((file) => file.type !== "application/pdf");
+
+    if (nonPdfFiles.length > 0) {
+      return { files: [], error: "Yalnızca PDF formatındaki raporları yükleyebilirsiniz." };
+    }
+
+    if (incomingFiles.length > MAX_FILES) {
+      return {
+        files: [],
+        error: `En fazla ${MAX_FILES} adet PDF yükleyebilirsiniz. Seçilen dosya sayısı: ${incomingFiles.length}.`,
+      };
+    }
+
+    return { files: incomingFiles, error: null };
+  };
+
+  const handleFileSelection = (fileList) => {
+    const { files, error } = sanitizeFiles(fileList);
+
+    if (error) {
+      setSelectedFiles([]);
+      setStatus({ type: "error", message: error });
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
       return;
     }
 
-    setSelectedFile(file);
+    setSelectedFiles(files);
     setStatus({ type: null, message: "" });
   };
 
   const handleFileChange = (event) => {
-    const file = event.target.files?.[0];
-    handleFileSelection(file);
+    handleFileSelection(event.target.files);
+    if (event.target) {
+      event.target.value = "";
+    }
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!selectedFile) {
-      setStatus({ type: "error", message: "Lütfen bir PDF dosyası seçin." });
+
+    if (selectedFiles.length < MIN_FILES) {
+      setStatus({
+        type: "error",
+        message: `Lütfen en az ${MIN_FILES} adet PDF dosyası seçin.`,
+      });
+      return;
+    }
+
+    if (selectedFiles.length > MAX_FILES) {
+      setStatus({
+        type: "error",
+        message: `En fazla ${MAX_FILES} adet PDF yükleyebilirsiniz.`,
+      });
       return;
     }
 
     setIsUploading(true);
     setStatus({ type: null, message: "" });
 
-    try {
-      const response = await uploadReport(selectedFile);
-      setStatus({ type: "success", message: "Rapor başarıyla yüklendi." });
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const file of selectedFiles) {
+      try {
+        await uploadReport(file);
+        successCount += 1;
+      } catch (error) {
+        console.error("PDF yükleme hatası", error);
+        failCount += 1;
       }
-      if (typeof onUploadSuccess === "function") {
-        onUploadSuccess(response.report);
-      }
-    } catch (error) {
-      const message = error.response?.data?.error ?? "Yükleme sırasında bir hata oluştu.";
-      setStatus({ type: "error", message });
-    } finally {
-      setIsUploading(false);
     }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    setSelectedFiles([]);
+
+    if (successCount > 0 && typeof onUploadSuccess === "function") {
+      onUploadSuccess();
+    }
+
+    if (failCount === 0) {
+      setStatus({
+        type: "success",
+        message: `${successCount} rapor başarıyla yüklendi.`,
+      });
+    } else if (successCount === 0) {
+      setStatus({
+        type: "error",
+        message: "Seçilen raporlar yüklenemedi. Lütfen tekrar deneyin.",
+      });
+    } else {
+      setStatus({
+        type: "warning",
+        message: `${successCount} rapor yüklendi, ${failCount} rapor yüklenemedi.`,
+      });
+    }
+
+    setIsUploading(false);
   };
 
   const handleDragOver = (event) => {
@@ -75,8 +137,7 @@ const UploadForm = ({ onUploadSuccess }) => {
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(false);
-    const file = event.dataTransfer?.files?.[0];
-    handleFileSelection(file);
+    handleFileSelection(event.dataTransfer?.files);
   };
 
   const openFileDialog = () => {
@@ -105,11 +166,14 @@ const UploadForm = ({ onUploadSuccess }) => {
           ref={fileInputRef}
           type="file"
           accept="application/pdf"
+          multiple
           onChange={handleFileChange}
           hidden
         />
         <p className="drag-area-title">PDF raporlarınızı buraya sürükleyip bırakın</p>
-        <p className="drag-area-subtitle">ya da aşağıdaki butona tıklayarak bilgisayarınızdan bir dosya seçin.</p>
+        <p className="drag-area-subtitle">
+          ya da aşağıdaki butona tıklayarak bilgisayarınızdan en az 1, en fazla 100 PDF seçin.
+        </p>
         <button
           type="button"
           className="button button-secondary"
@@ -117,18 +181,39 @@ const UploadForm = ({ onUploadSuccess }) => {
             event.stopPropagation();
             openFileDialog();
           }}
+          disabled={isUploading}
         >
           Dosya Seç
         </button>
-        {selectedFile && (
-          <span className="selected-file-name">Seçilen dosya: {selectedFile.name}</span>
+        {selectedFiles.length > 0 && (
+          <div className="selected-files">
+            <span className="selected-file-name">
+              Seçilen {selectedFiles.length} PDF hazırlanıyor.
+            </span>
+            <ul className="selected-files-list">
+              {selectedFiles.slice(0, 5).map((file) => (
+                <li key={file.name}>{file.name}</li>
+              ))}
+              {selectedFiles.length > 5 && (
+                <li>+{selectedFiles.length - 5} adet daha...</li>
+              )}
+            </ul>
+          </div>
         )}
       </div>
       <button className="button button-primary" type="submit" disabled={isUploading}>
         {isUploading ? "Yükleniyor..." : "PDF Yükle"}
       </button>
       {status.type && (
-        <div className={`alert ${status.type === "success" ? "alert-success" : "alert-error"}`}>
+        <div
+          className={`alert ${
+            status.type === "success"
+              ? "alert-success"
+              : status.type === "warning"
+              ? "alert-warning"
+              : "alert-error"
+          }`}
+        >
           {status.message}
         </div>
       )}

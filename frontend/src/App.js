@@ -196,7 +196,9 @@ const App = () => {
             />
             <Route
               path="/archive"
-              element={<ArchiveManagement reports={reports} onRefresh={fetchReports} />}
+              element={
+                <ArchiveManagement reports={reports} analysisEngine={analysisEngine} />
+              }
             />
             <Route
               path="/query"
