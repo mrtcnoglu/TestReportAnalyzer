@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import difflib
+import re
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -11,6 +12,7 @@ from werkzeug.utils import secure_filename
 
 try:  # pragma: no cover - import flexibility
     from . import database
+    from .ai_analyzer import ai_analyzer
     from .pdf_analyzer import (
         REPORT_TYPE_LABELS,
         extract_text_from_pdf,
@@ -19,6 +21,7 @@ try:  # pragma: no cover - import flexibility
     )
 except ImportError:  # pragma: no cover
     import database  # type: ignore
+    from ai_analyzer import ai_analyzer  # type: ignore
     from pdf_analyzer import (  # type: ignore
         REPORT_TYPE_LABELS,
         extract_text_from_pdf,
@@ -159,6 +162,267 @@ LANGUAGE_TEMPLATES = {
         "default_reason": "Fehlerursache nicht angegeben",
     },
 }
+
+
+def _merge_localized_summaries(fallback: dict, overrides: dict | None) -> dict:
+    if not isinstance(overrides, dict):
+        return fallback
+
+    merged = {}
+    for language, default_entry in fallback.items():
+        override_entry = overrides.get(language, {}) if isinstance(overrides, dict) else {}
+        merged[language] = {
+            "summary": (override_entry.get("summary") or default_entry.get("summary") or "").strip(),
+            "conditions": (override_entry.get("conditions") or default_entry.get("conditions") or "").strip(),
+            "improvements": (override_entry.get("improvements") or default_entry.get("improvements") or "").strip(),
+        }
+    return merged
+
+
+def _merge_structured_sections(fallback: dict, overrides: dict | None) -> dict:
+    if not isinstance(overrides, dict):
+        return fallback
+
+    merged = {}
+    for key in ("graphs", "conditions", "results", "comments"):
+        override_value = overrides.get(key)
+        if isinstance(override_value, list):
+            override_value = " ".join(str(item).strip() for item in override_value if str(item).strip())
+        merged[key] = (override_value or fallback.get(key) or "").strip()
+    return merged
+
+
+def _merge_highlights(fallback: list[str], overrides: list[str] | None) -> list[str]:
+    base = [item for item in fallback if item]
+    if not isinstance(overrides, list):
+        return base
+
+    for item in overrides:
+        text = str(item).strip()
+        if text and text not in base:
+            base.append(text)
+    return base[:5]
+
+
+def _split_into_sentences(text: str) -> list[str]:
+    if not text:
+        return []
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    return [sentence.strip() for sentence in sentences if sentence and sentence.strip()]
+
+
+def _extract_keyword_sentences(text: str, keywords: tuple[str, ...], limit: int = 3) -> str:
+    sentences = _split_into_sentences(text)
+    matches: list[str] = []
+    lowered = [keyword.lower() for keyword in keywords]
+    for sentence in sentences:
+        sentence_lower = sentence.lower()
+        if any(keyword in sentence_lower for keyword in lowered):
+            matches.append(sentence)
+        if len(matches) >= limit:
+            break
+    return " ".join(matches)
+
+
+def _build_structured_sections_from_text(
+    text: str,
+    total_tests: int,
+    passed_tests: int,
+    failed_tests: int,
+    failure_details: list[dict],
+    report_type_label: str,
+) -> dict:
+    graphs = _extract_keyword_sentences(
+        text,
+        ("graph", "grafik", "figure", "chart", "spektrum", "spectrum", "plot"),
+    )
+    conditions = _extract_keyword_sentences(
+        text,
+        ("condition", "koşul", "ambient", "environment", "temperature", "setup", "montaj"),
+    )
+    comments = _extract_keyword_sentences(
+        text,
+        ("comment", "yorum", "assessment", "değerl", "note", "gözlem"),
+    )
+
+    if not graphs:
+        graphs = (
+            "Rapor metninde grafiklere dair belirgin bir açıklama bulunamadı; PDF içeriği manuel olarak incelenmeli."
+        )
+    if not conditions:
+        conditions = (
+            "Test koşulları bölümü metinde sınırlı yer alıyor. {report_type} için standart prosedürler esas alınmalıdır."
+        ).format(report_type=report_type_label)
+    success_rate = (passed_tests / total_tests * 100.0) if total_tests else 0.0
+    results = (
+        f"Toplam {total_tests} testin {passed_tests}'i başarılı, {failed_tests}'i başarısız. "
+        f"Başarı oranı %{success_rate:.1f}."
+    )
+    if failure_details:
+        first_failure = failure_details[0]
+        failure_reason = first_failure.get("failure_reason") or first_failure.get("error_message") or ""
+        if failure_reason:
+            results += f" Öne çıkan başarısızlık: {first_failure.get('test_name', 'Bilinmeyen Test')} - {failure_reason}."
+    if not comments:
+        comments = "Rapor genelinde ek yorum veya uzman görüşü bulunamadı; değerlendiricinin notları sınırlı."
+
+    return {
+        "graphs": graphs,
+        "conditions": conditions,
+        "results": results,
+        "comments": comments,
+    }
+
+
+def _build_highlights_from_data(
+    total_tests: int,
+    passed_tests: int,
+    failed_tests: int,
+    failure_details: list[dict],
+    report_type_label: str,
+) -> list[str]:
+    highlights = [
+        f"{report_type_label} kapsamında {total_tests} test incelendi.",
+        f"Başarı/başarısızlık dağılımı: {passed_tests} PASS / {failed_tests} FAIL.",
+    ]
+    for failure in failure_details[:3]:
+        reason = failure.get("failure_reason") or failure.get("error_message") or ""
+        if reason:
+            highlights.append(
+                f"{failure.get('test_name', 'Bilinmeyen Test')}: {reason}"
+            )
+    return highlights
+
+
+def _normalize_test_name_for_key(name: str | None) -> str:
+    return re.sub(r"\s+", " ", (name or "").strip()).lower()
+
+
+def _compose_result_detail(result: dict | None) -> str:
+    if not result:
+        return ""
+    for key in ("failure_reason", "error_message", "suggested_fix"):
+        value = (result.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _collect_test_differences(
+    first_results: list[dict],
+    second_results: list[dict],
+) -> list[dict]:
+    first_map = {
+        _normalize_test_name_for_key(result.get("test_name")): result for result in first_results
+    }
+    second_map = {
+        _normalize_test_name_for_key(result.get("test_name")): result for result in second_results
+    }
+
+    differences: list[dict] = []
+    all_keys = set(first_map) | set(second_map)
+    for key in sorted(all_keys):
+        first_result = first_map.get(key)
+        second_result = second_map.get(key)
+        first_status = (first_result.get("status") if first_result else "MISSING") or "MISSING"
+        second_status = (second_result.get("status") if second_result else "MISSING") or "MISSING"
+
+        if first_status == second_status and first_status != "MISSING":
+            continue
+
+        differences.append(
+            {
+                "test_name": first_result.get("test_name")
+                if first_result and first_result.get("test_name")
+                else (second_result.get("test_name") if second_result else "Bilinmeyen Test"),
+                "first_status": first_status.upper(),
+                "second_status": second_status.upper(),
+                "first_detail": _compose_result_detail(first_result),
+                "second_detail": _compose_result_detail(second_result),
+            }
+        )
+
+    return differences
+
+
+_STATUS_LABELS = {
+    "tr": {"PASS": "test başarılı", "FAIL": "test başarısız", "MISSING": "raporda yer almıyor"},
+    "en": {"PASS": "test passed", "FAIL": "test failed", "MISSING": "not present"},
+    "de": {"PASS": "Test bestanden", "FAIL": "Test nicht bestanden", "MISSING": "nicht enthalten"},
+}
+
+
+def _format_difference_sentence(language: str, difference: dict) -> str:
+    labels = _STATUS_LABELS.get(language, _STATUS_LABELS["tr"])
+    test_name = difference.get("test_name") or "Test"
+    first_status = labels.get(difference.get("first_status", "").upper(), labels["MISSING"])
+    second_status = labels.get(difference.get("second_status", "").upper(), labels["MISSING"])
+    first_detail = difference.get("first_detail") or ""
+    second_detail = difference.get("second_detail") or ""
+
+    first_sentence = first_status
+    if first_detail:
+        first_sentence += f" ({first_detail})"
+    second_sentence = second_status
+    if second_detail:
+        second_sentence += f" ({second_detail})"
+
+    if language == "en":
+        template = (
+            f"In the {test_name} test, the first report is {first_sentence}, while the second report is {second_sentence}."
+        )
+    elif language == "de":
+        template = (
+            f"Beim Test {test_name} ist der erste Bericht {first_sentence}, der zweite Bericht hingegen {second_sentence}."
+        )
+    else:
+        template = (
+            f"{test_name} testinde ilk rapor {first_sentence}, ikinci rapor ise {second_sentence}."
+        )
+
+    return template
+
+
+def _build_localized_comparison_summary(
+    first_report_label: str,
+    second_report_label: str,
+    differences: list[dict],
+) -> dict:
+    summaries = {}
+    difference_count = len(differences)
+    if difference_count == 0:
+        return {
+            "tr": {
+                "overview": "Seçilen raporların test sonuçları birebir aynı görünüyor; farklılık tespit edilmedi.",
+                "details": [],
+            },
+            "en": {
+                "overview": "The selected reports share the same test outcomes; no differences were detected.",
+                "details": [],
+            },
+            "de": {
+                "overview": "Die ausgewählten Berichte zeigen keine Abweichungen in den Testergebnissen.",
+                "details": [],
+            },
+        }
+
+    for language in ("tr", "en", "de"):
+        sentences = [_format_difference_sentence(language, diff) for diff in differences]
+        if language == "en":
+            overview = (
+                f"{difference_count} test differs between {first_report_label} and {second_report_label}."
+            )
+        elif language == "de":
+            overview = (
+                f"Zwischen {first_report_label} und {second_report_label} unterscheiden sich {difference_count} Tests."
+            )
+        else:
+            overview = (
+                f"{first_report_label} ile {second_report_label} arasında {difference_count} test sonucunda farklılık var."
+            )
+        summaries[language] = {"overview": overview, "details": sentences}
+
+    return summaries
 
 
 def _build_multilingual_summary(
@@ -384,6 +648,15 @@ def compare_reports():
     except Exception as exc:  # pragma: no cover - defensive
         return _json_error(f"PDF karşılaştırması yapılamadı: {exc}", 500)
 
+    first_results = database.get_test_results(first_id)
+    second_results = database.get_test_results(second_id)
+    structured_differences = _collect_test_differences(first_results, second_results)
+    localized_difference_summary = _build_localized_comparison_summary(
+        first_report.get("filename") or f"report-{first_id}.pdf",
+        second_report.get("filename") or f"report-{second_id}.pdf",
+        structured_differences,
+    )
+
     similarity_ratio = difflib.SequenceMatcher(None, first_text, second_text).ratio() * 100.0
 
     def _normalise_lines(raw_text: str):
@@ -431,6 +704,11 @@ def compare_reports():
     else:
         verdict = "Raporlar arasında belirgin içerik farkı var."
 
+    if structured_differences:
+        verdict += f" Karşılaştırmada {len(structured_differences)} test sonucunda ayrışma bulundu."
+    else:
+        verdict += " Test sonuçları arasında fark tespit edilmedi."
+
     response_payload = {
         "summary": (
             f"{first_report.get('filename')} ile {second_report.get('filename')} arasındaki benzerlik oranı "
@@ -452,6 +730,8 @@ def compare_reports():
         "difference_highlights": diff_lines,
         "unique_to_first": unique_first,
         "unique_to_second": unique_second,
+        "test_differences": structured_differences,
+        "difference_summary": localized_difference_summary,
     }
 
     return jsonify(response_payload)
@@ -599,7 +879,7 @@ def analyze_files_with_ai():
             if result.get("status") == "FAIL"
         ]
 
-        localized_summaries = _build_multilingual_summary(
+        fallback_localized = _build_multilingual_summary(
             engine_label,
             filename,
             report_type_label,
@@ -608,6 +888,45 @@ def analyze_files_with_ai():
             failed_tests,
             failure_details,
         )
+
+        ai_summary_payload = ai_analyzer.generate_report_summary(
+            filename=filename,
+            report_type=report_type_label,
+            total_tests=total_tests,
+            passed_tests=passed_tests,
+            failed_tests=failed_tests,
+            raw_text=text,
+            failure_details=failure_details,
+        )
+
+        localized_summaries = _merge_localized_summaries(
+            fallback_localized, (ai_summary_payload or {}).get("localized_summaries") if ai_summary_payload else None
+        )
+
+        fallback_sections = _build_structured_sections_from_text(
+            text,
+            total_tests,
+            passed_tests,
+            failed_tests,
+            failure_details,
+            report_type_label,
+        )
+        structured_sections = _merge_structured_sections(
+            fallback_sections, (ai_summary_payload or {}).get("sections") if ai_summary_payload else None
+        )
+
+        fallback_highlights = _build_highlights_from_data(
+            total_tests,
+            passed_tests,
+            failed_tests,
+            failure_details,
+            report_type_label,
+        )
+        analysis_highlights = _merge_highlights(
+            fallback_highlights,
+            (ai_summary_payload or {}).get("highlights") if ai_summary_payload else None,
+        )
+
         base_summary = localized_summaries["tr"]["summary"]
         conditions_text = localized_summaries["tr"].get("conditions", "")
         improvements_text = localized_summaries["tr"].get("improvements", "")
@@ -628,6 +947,8 @@ def analyze_files_with_ai():
                 "alignment": alignment_key,
                 "success_rate": success_rate,
                 "failures": failure_details,
+                "structured_sections": structured_sections,
+                "highlights": analysis_highlights,
             }
         )
 

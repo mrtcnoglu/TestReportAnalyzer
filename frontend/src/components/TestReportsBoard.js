@@ -7,7 +7,11 @@ import {
   getReportDownloadUrl,
 } from "../api";
 import { detectReportType, getReportStatusLabel } from "../utils/reportUtils";
-import { createAnalysisEntry, resolveEngineLabel } from "../utils/analysisUtils";
+import {
+  LANGUAGE_LABELS,
+  createAnalysisEntry,
+  resolveEngineLabel,
+} from "../utils/analysisUtils";
 
 const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }) => {
   const [selectedIds, setSelectedIds] = useState([]);
@@ -238,41 +242,88 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
             </span>
           </div>
           <div className="comparison-summary">
-            <p>{compareResult.summary}</p>
-            <div className="comparison-columns">
-              <div className="comparison-column">
-                <h4>{compareResult.first_report?.filename || "1. Rapor"}</h4>
-                <span className="muted-text">{compareResult.first_report?.test_type}</span>
-                <ul className="comparison-list">
-                  {compareResult.unique_to_first?.length ? (
-                    compareResult.unique_to_first.map((item, index) => (
-                      <li key={`unique-first-${index}`}>{item}</li>
-                    ))
-                  ) : (
-                    <li className="muted-text comparison-empty">Belirgin farklı bölüm bulunamadı.</li>
-                  )}
-                </ul>
-              </div>
-              <div className="comparison-column">
-                <h4>{compareResult.second_report?.filename || "2. Rapor"}</h4>
-                <span className="muted-text">{compareResult.second_report?.test_type}</span>
-                <ul className="comparison-list">
-                  {compareResult.unique_to_second?.length ? (
-                    compareResult.unique_to_second.map((item, index) => (
-                      <li key={`unique-second-${index}`}>{item}</li>
-                    ))
-                  ) : (
-                    <li className="muted-text comparison-empty">Belirgin farklı bölüm bulunamadı.</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-            {compareResult.difference_highlights?.length ? (
-              <div className="comparison-diff" role="region" aria-live="polite">
-                <pre>{compareResult.difference_highlights.join("\n")}</pre>
+            {compareResult.difference_summary ? (
+              <div className="comparison-language-grid">
+                {Object.entries(compareResult.difference_summary).map(([languageKey, content]) => (
+                  <div className="comparison-language-card" key={`comparison-lang-${languageKey}`}>
+                    <h4>{LANGUAGE_LABELS[languageKey] || languageKey.toUpperCase()}</h4>
+                    <p>{content.overview}</p>
+                    {content.details?.length ? (
+                      <ul className="comparison-language-list">
+                        {content.details.map((line, index) => (
+                          <li key={`comparison-detail-${languageKey}-${index}`}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted-text comparison-empty">Farklılık bulunamadı.</p>
+                    )}
+                  </div>
+                ))}
               </div>
             ) : (
-              <p className="muted-text">Detaylı farklar bulunamadı; raporlar büyük ölçüde aynı.</p>
+              <p>{compareResult.summary}</p>
+            )}
+            {compareResult.difference_summary && (
+              <p className="muted-text comparison-meta">{compareResult.summary}</p>
+            )}
+            {(compareResult.test_differences?.length ||
+              compareResult.unique_to_first?.length ||
+              compareResult.unique_to_second?.length ||
+              compareResult.difference_highlights?.length) && (
+              <details className="comparison-technical">
+                <summary>Teknik Karşılaştırma Detayları</summary>
+                <div className="comparison-technical-content">
+                  {compareResult.test_differences?.length ? (
+                    <div className="comparison-technical-section">
+                      <h4>Test Durumu Özetleri</h4>
+                      <ul className="comparison-difference-list">
+                        {compareResult.test_differences.map((diff, index) => (
+                          <li key={`diff-${index}`}>
+                            <strong>{diff.test_name}:</strong> İlk rapor → {diff.first_status}
+                            {diff.first_detail ? ` (${diff.first_detail})` : ""}; ikinci rapor → {diff.second_status}
+                            {diff.second_detail ? ` (${diff.second_detail})` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {(compareResult.unique_to_first?.length || compareResult.unique_to_second?.length) && (
+                    <div className="comparison-columns">
+                      <div className="comparison-column">
+                        <h4>{compareResult.first_report?.filename || "1. Rapor"}</h4>
+                        <span className="muted-text">{compareResult.first_report?.test_type}</span>
+                        <ul className="comparison-list">
+                          {compareResult.unique_to_first?.length ? (
+                            compareResult.unique_to_first.map((item, index) => (
+                              <li key={`unique-first-${index}`}>{item}</li>
+                            ))
+                          ) : (
+                            <li className="muted-text comparison-empty">Belirgin farklı bölüm bulunamadı.</li>
+                          )}
+                        </ul>
+                      </div>
+                      <div className="comparison-column">
+                        <h4>{compareResult.second_report?.filename || "2. Rapor"}</h4>
+                        <span className="muted-text">{compareResult.second_report?.test_type}</span>
+                        <ul className="comparison-list">
+                          {compareResult.unique_to_second?.length ? (
+                            compareResult.unique_to_second.map((item, index) => (
+                              <li key={`unique-second-${index}`}>{item}</li>
+                            ))
+                          ) : (
+                            <li className="muted-text comparison-empty">Belirgin farklı bölüm bulunamadı.</li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                  {compareResult.difference_highlights?.length ? (
+                    <div className="comparison-diff" role="region" aria-live="polite">
+                      <pre>{compareResult.difference_highlights.join("\n")}</pre>
+                    </div>
+                  ) : null}
+                </div>
+              </details>
             )}
           </div>
         </div>

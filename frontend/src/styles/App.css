@@ -657,6 +657,39 @@ a:hover {
   color: var(--primary-color);
 }
 
+.analysis-structured-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin: 0.75rem 0;
+}
+
+.analysis-structured-item {
+  background-color: rgba(148, 163, 184, 0.12);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.analysis-structured-item h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--info-color);
+}
+
+.analysis-highlights {
+  margin: 0.75rem 0 0 1rem;
+  padding: 0;
+  list-style: disc;
+  color: var(--primary-color);
+}
+
+.analysis-highlights li {
+  margin-bottom: 0.25rem;
+}
+
 .analysis-failure-list {
   margin: 0.75rem 0 0 0;
   padding-left: 1.1rem;
@@ -685,6 +718,74 @@ a:hover {
 
 .comparison-summary p {
   margin: 0;
+}
+
+.comparison-language-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.comparison-language-card {
+  background-color: rgba(148, 163, 184, 0.12);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comparison-language-card h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--primary-color);
+}
+
+.comparison-language-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  font-size: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.comparison-meta {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.comparison-technical {
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+}
+
+.comparison-technical summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.comparison-technical-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.comparison-technical-section h4 {
+  margin: 0 0 0.5rem 0;
+}
+
+.comparison-difference-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+}
+
+.comparison-difference-list li {
+  margin-bottom: 0.35rem;
+  line-height: 1.4;
 }
 
 .comparison-columns {
