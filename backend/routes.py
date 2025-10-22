@@ -239,16 +239,45 @@ def _merge_localized_summaries(fallback: dict, overrides: dict | None) -> dict:
     return merged
 
 
-def _merge_structured_sections(fallback: dict, overrides: dict | None) -> dict:
-    if not isinstance(overrides, dict):
-        return fallback
+def _wrap_multilingual_text(text: str) -> dict[str, str]:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return {}
+    return {"tr": cleaned, "en": cleaned, "de": cleaned}
 
-    merged = {}
+
+def _normalize_structured_section_value(value: object) -> dict[str, str]:
+    if isinstance(value, dict):
+        normalized: dict[str, str] = {}
+        for language, text in value.items():
+            language_key = str(language).strip().lower()
+            cleaned = str(text or "").strip()
+            if language_key and cleaned:
+                normalized[language_key] = cleaned
+        return normalized
+
+    if isinstance(value, list):
+        joined = " ".join(str(item).strip() for item in value if str(item).strip())
+        return _wrap_multilingual_text(joined)
+
+    if value is None:
+        return {}
+
+    return _wrap_multilingual_text(str(value))
+
+
+def _merge_structured_sections(fallback: dict, overrides: dict | None) -> dict:
+    overrides = overrides or {}
+    if not isinstance(overrides, dict):
+        overrides = {}
+
+    merged: dict[str, dict[str, str]] = {}
     for key in ("graphs", "conditions", "results", "comments"):
-        override_value = overrides.get(key)
-        if isinstance(override_value, list):
-            override_value = " ".join(str(item).strip() for item in override_value if str(item).strip())
-        merged[key] = (override_value or fallback.get(key) or "").strip()
+        base = _normalize_structured_section_value(fallback.get(key))
+        override_value = _normalize_structured_section_value(overrides.get(key))
+        combined = {**base, **override_value}
+        if combined:
+            merged[key] = combined
     return merged
 
 
@@ -305,32 +334,71 @@ def _build_structured_sections_from_text(
         ("comment", "yorum", "assessment", "değerl", "note", "gözlem"),
     )
 
-    if not graphs:
-        graphs = (
-            "Rapor metninde grafiklere dair belirgin bir açıklama bulunamadı; PDF içeriği manuel olarak incelenmeli."
-        )
-    if not conditions:
-        conditions = (
-            "Test koşulları bölümü metinde sınırlı yer alıyor. {report_type} için standart prosedürler esas alınmalıdır."
-        ).format(report_type=report_type_label)
+    if graphs:
+        graphs_value = _wrap_multilingual_text(graphs)
+    else:
+        graphs_value = {
+            "tr": (
+                "Rapor metninde grafiklere dair belirgin bir açıklama bulunamadı; PDF içeriği manuel olarak incelenmeli."
+            ),
+            "en": (
+                "No specific chart description was found in the report; the PDF should be reviewed manually."
+            ),
+            "de": (
+                "Im Berichtstext wurde keine eindeutige Beschreibung der Grafiken gefunden; bitte das PDF manuell prüfen."
+            ),
+        }
+
+    if conditions:
+        conditions_value = _wrap_multilingual_text(conditions)
+    else:
+        conditions_value = {
+            "tr": (
+                "Test koşulları bölümü metinde sınırlı yer alıyor. {report_type} için standart prosedürler esas alınmalıdır."
+            ).format(report_type=report_type_label),
+            "en": (
+                "The section describing the test conditions is limited in the text. Standard procedures for {report_type} should be followed."
+            ).format(report_type=report_type_label),
+            "de": (
+                "Der Abschnitt zu den Testbedingungen ist im Text nur begrenzt vorhanden. Es sollten die Standardverfahren für {report_type} beachtet werden."
+            ).format(report_type=report_type_label),
+        }
     success_rate = (passed_tests / total_tests * 100.0) if total_tests else 0.0
-    results = (
+    results_tr = (
         f"Toplam {total_tests} testin {passed_tests}'i başarılı, {failed_tests}'i başarısız. "
         f"Başarı oranı %{success_rate:.1f}."
+    )
+    results_en = (
+        f"{total_tests} tests in total: {passed_tests} passed, {failed_tests} failed. "
+        f"Success rate {success_rate:.1f}%."
+    )
+    results_de = (
+        f"Insgesamt {total_tests} Tests: {passed_tests} bestanden, {failed_tests} nicht bestanden. "
+        f"Erfolgsquote {success_rate:.1f}%."
     )
     if failure_details:
         first_failure = failure_details[0]
         failure_reason = first_failure.get("failure_reason") or first_failure.get("error_message") or ""
         if failure_reason:
-            results += f" Öne çıkan başarısızlık: {first_failure.get('test_name', 'Bilinmeyen Test')} - {failure_reason}."
-    if not comments:
-        comments = "Rapor genelinde ek yorum veya uzman görüşü bulunamadı; değerlendiricinin notları sınırlı."
+            highlight = first_failure.get("test_name", "Bilinmeyen Test")
+            results_tr += f" Öne çıkan başarısızlık: {highlight} - {failure_reason}."
+            results_en += f" Highlighted failure: {highlight} - {failure_reason}."
+            results_de += f" Hervorgehobener Fehler: {highlight} - {failure_reason}."
+
+    if comments:
+        comments_value = _wrap_multilingual_text(comments)
+    else:
+        comments_value = {
+            "tr": "Rapor genelinde ek yorum veya uzman görüşü bulunamadı; değerlendiricinin notları sınırlı.",
+            "en": "No additional comments or expert opinions were found in the report; reviewer notes are limited.",
+            "de": "Im Bericht wurden keine zusätzlichen Kommentare oder Expertenmeinungen gefunden; die Gutachternotizen sind begrenzt.",
+        }
 
     return {
-        "graphs": graphs,
-        "conditions": conditions,
-        "results": results,
-        "comments": comments,
+        "graphs": graphs_value,
+        "conditions": conditions_value,
+        "results": {"tr": results_tr, "en": results_en, "de": results_de},
+        "comments": comments_value,
     }
 
 
