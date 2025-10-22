@@ -66,6 +66,13 @@ export const downloadReportFile = async (id) => {
   return response.data;
 };
 
+export const compareReports = async (reportIds) => {
+  const response = await client.post("/reports/compare", {
+    report_ids: reportIds,
+  });
+  return response.data;
+};
+
 export const resetAllData = async () => {
   const response = await client.post("/reset");
   return response.data;

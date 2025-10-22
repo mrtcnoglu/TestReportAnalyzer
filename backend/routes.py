@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import difflib
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -342,6 +343,118 @@ def download_report_file(report_id: int):
         as_attachment=False,
         download_name=report.get("filename") or pdf_path.name,
     )
+
+
+@reports_bp.route("/reports/compare", methods=["POST"])
+def compare_reports():
+    payload = request.get_json(silent=True) or {}
+    report_ids = payload.get("report_ids")
+
+    if not isinstance(report_ids, list):
+        return _json_error("Karşılaştırma için rapor kimliklerini içeren bir liste gönderin.", 400)
+
+    if len(report_ids) != 2:
+        return _json_error("Karşılaştırma işlemi için tam olarak iki rapor seçmelisiniz.", 400)
+
+    try:
+        first_id, second_id = (int(report_ids[0]), int(report_ids[1]))
+    except (TypeError, ValueError):
+        return _json_error("Geçersiz rapor kimliği gönderildi.", 400)
+
+    if first_id == second_id:
+        return _json_error("Karşılaştırma için farklı iki rapor seçmelisiniz.", 400)
+
+    first_report = database.get_report_by_id(first_id)
+    second_report = database.get_report_by_id(second_id)
+
+    if not first_report or not second_report:
+        return _json_error("Seçilen raporlardan biri bulunamadı.", 404)
+
+    first_path = Path(first_report.get("pdf_path") or "")
+    second_path = Path(second_report.get("pdf_path") or "")
+
+    if not first_path.exists() or not second_path.exists():
+        return _json_error("Karşılaştırma için PDF dosyalarından biri bulunamadı.", 404)
+
+    try:
+        first_text = extract_text_from_pdf(first_path)
+        second_text = extract_text_from_pdf(second_path)
+    except FileNotFoundError:
+        return _json_error("Karşılaştırma için PDF dosyalarından biri bulunamadı.", 404)
+    except Exception as exc:  # pragma: no cover - defensive
+        return _json_error(f"PDF karşılaştırması yapılamadı: {exc}", 500)
+
+    similarity_ratio = difflib.SequenceMatcher(None, first_text, second_text).ratio() * 100.0
+
+    def _normalise_lines(raw_text: str):
+        return [line.strip() for line in raw_text.splitlines() if line and line.strip()]
+
+    first_lines = _normalise_lines(first_text)
+    second_lines = _normalise_lines(second_text)
+
+    def _collect_unique(source_lines, target_lines):
+        target_set = set(target_lines)
+        uniques = []
+        seen = set()
+        for line in source_lines:
+            if line in target_set or line in seen or len(line) < 4:
+                continue
+            uniques.append(line)
+            seen.add(line)
+            if len(uniques) >= 5:
+                break
+        return uniques
+
+    unique_first = _collect_unique(first_lines, second_lines)
+    unique_second = _collect_unique(second_lines, first_lines)
+
+    diff_lines = list(
+        difflib.unified_diff(
+            first_text.splitlines(),
+            second_text.splitlines(),
+            fromfile=first_report.get("filename") or f"report-{first_id}.pdf",
+            tofile=second_report.get("filename") or f"report-{second_id}.pdf",
+            lineterm="",
+        )
+    )
+
+    max_diff_lines = 120
+    if len(diff_lines) > max_diff_lines:
+        remaining = len(diff_lines) - max_diff_lines
+        diff_lines = diff_lines[:max_diff_lines]
+        diff_lines.append(f"... ({remaining} satır daha)")
+
+    if similarity_ratio >= 85:
+        verdict = "Raporlar büyük ölçüde aynı içerikte."
+    elif similarity_ratio >= 60:
+        verdict = "Raporlar benzer ancak dikkate değer farklılıklar mevcut."
+    else:
+        verdict = "Raporlar arasında belirgin içerik farkı var."
+
+    response_payload = {
+        "summary": (
+            f"{first_report.get('filename')} ile {second_report.get('filename')} arasındaki benzerlik oranı "
+            f"%{similarity_ratio:.1f}. {verdict}"
+        ),
+        "similarity": round(similarity_ratio, 2),
+        "first_report": {
+            "id": first_id,
+            "filename": first_report.get("filename"),
+            "upload_date": first_report.get("upload_date"),
+            "test_type": _resolve_report_type_label(first_report.get("test_type")),
+        },
+        "second_report": {
+            "id": second_id,
+            "filename": second_report.get("filename"),
+            "upload_date": second_report.get("upload_date"),
+            "test_type": _resolve_report_type_label(second_report.get("test_type")),
+        },
+        "difference_highlights": diff_lines,
+        "unique_to_first": unique_first,
+        "unique_to_second": unique_second,
+    }
+
+    return jsonify(response_payload)
 
 
 @reports_bp.route("/reports/<int:report_id>/failures", methods=["GET"])

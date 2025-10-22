@@ -1,6 +1,11 @@
 import React, { useMemo, useState } from "react";
 import AnalysisSummaryCard from "./AnalysisSummaryCard";
-import { analyzeReportsWithAI, downloadReportFile, getReportDownloadUrl } from "../api";
+import {
+  analyzeReportsWithAI,
+  compareReports,
+  downloadReportFile,
+  getReportDownloadUrl,
+} from "../api";
 import { detectReportType, getReportStatusLabel } from "../utils/reportUtils";
 import { createAnalysisEntry, resolveEngineLabel } from "../utils/analysisUtils";
 
@@ -9,6 +14,8 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
   const [actionMessage, setActionMessage] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [sectionAnalyses, setSectionAnalyses] = useState([]);
+  const [compareResult, setCompareResult] = useState(null);
+  const [isComparing, setIsComparing] = useState(false);
 
   const tableData = useMemo(
     () =>
@@ -28,7 +35,7 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
 
   const engineLabel = resolveEngineLabel(analysisEngine);
 
-  const handleCompare = () => {
+  const handleCompare = async () => {
     if (selectedIds.length < 2) {
       setActionMessage("Karşılaştırma için en az iki rapor seçmelisiniz.");
       return;
@@ -39,9 +46,27 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
       return;
     }
 
-    setActionMessage(
-      `${selectedIds.length} rapor ${engineLabel} ile karşılaştırılıyor...`
-    );
+    setIsComparing(true);
+    setActionMessage("Seçilen raporlar karşılaştırılıyor...");
+
+    try {
+      const idsToCompare = selectedIds.slice(0, 2);
+      const response = await compareReports(idsToCompare);
+
+      setCompareResult(response);
+
+      setActionMessage(response?.summary || "Karşılaştırma tamamlandı.");
+    } catch (error) {
+      console.error("Karşılaştırma hatası", error);
+      const message =
+        error?.response?.data?.error ||
+        error?.message ||
+        "Karşılaştırma sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
+      setActionMessage(message);
+      setCompareResult(null);
+    } finally {
+      setIsComparing(false);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -143,6 +168,7 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
               <tr>
                 <th></th>
                 <th>Tarih</th>
+                <th>Rapor Adı</th>
                 <th>Koltuk Modeli</th>
                 <th>Araç Platformu</th>
                 <th>Lab</th>
@@ -160,6 +186,7 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
                     />
                   </td>
                   <td>{new Date(report.upload_date).toLocaleDateString()}</td>
+                  <td>{report.filename || "Bilinmiyor"}</td>
                   <td>{report.detectedType === "R80 Darbe Testi" ? "ECE R80 Koltuk" : "Belirtilmedi"}</td>
                   <td>{report.detectedType === "R10 EMC Testi" ? "ECE R10 Platformu" : "Genel Platform"}</td>
                   <td>{report.detectedType === "R10 EMC Testi" ? "EMC Lab" : "Darbe Lab"}</td>
@@ -175,8 +202,13 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
         )}
 
         <div className="report-actions">
-          <button className="button" type="button" onClick={handleCompare} disabled={isProcessing}>
-            Karşılaştır
+          <button
+            className="button"
+            type="button"
+            onClick={handleCompare}
+            disabled={isProcessing || isComparing}
+          >
+            {isComparing ? "Karşılaştırılıyor..." : "Karşılaştır"}
           </button>
           <button
             className="button button-primary"
@@ -192,6 +224,59 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
         </div>
         {actionMessage && <div className="alert alert-info">{actionMessage}</div>}
       </div>
+      {compareResult && (
+        <div className="card comparison-card">
+          <div className="card-header">
+            <div>
+              <h3>Karşılaştırma Sonucu</h3>
+              <p className="muted-text">
+                {compareResult.first_report?.filename} ↔ {compareResult.second_report?.filename}
+              </p>
+            </div>
+            <span className="badge badge-info">
+              Benzerlik %{compareResult.similarity?.toFixed?.(1) ?? compareResult.similarity}
+            </span>
+          </div>
+          <div className="comparison-summary">
+            <p>{compareResult.summary}</p>
+            <div className="comparison-columns">
+              <div className="comparison-column">
+                <h4>{compareResult.first_report?.filename || "1. Rapor"}</h4>
+                <span className="muted-text">{compareResult.first_report?.test_type}</span>
+                <ul className="comparison-list">
+                  {compareResult.unique_to_first?.length ? (
+                    compareResult.unique_to_first.map((item, index) => (
+                      <li key={`unique-first-${index}`}>{item}</li>
+                    ))
+                  ) : (
+                    <li className="muted-text comparison-empty">Belirgin farklı bölüm bulunamadı.</li>
+                  )}
+                </ul>
+              </div>
+              <div className="comparison-column">
+                <h4>{compareResult.second_report?.filename || "2. Rapor"}</h4>
+                <span className="muted-text">{compareResult.second_report?.test_type}</span>
+                <ul className="comparison-list">
+                  {compareResult.unique_to_second?.length ? (
+                    compareResult.unique_to_second.map((item, index) => (
+                      <li key={`unique-second-${index}`}>{item}</li>
+                    ))
+                  ) : (
+                    <li className="muted-text comparison-empty">Belirgin farklı bölüm bulunamadı.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+            {compareResult.difference_highlights?.length ? (
+              <div className="comparison-diff" role="region" aria-live="polite">
+                <pre>{compareResult.difference_highlights.join("\n")}</pre>
+              </div>
+            ) : (
+              <p className="muted-text">Detaylı farklar bulunamadı; raporlar büyük ölçüde aynı.</p>
+            )}
+          </div>
+        </div>
+      )}
       <AnalysisSummaryCard
         analyses={sectionAnalyses}
         title="Analiz Özeti"
