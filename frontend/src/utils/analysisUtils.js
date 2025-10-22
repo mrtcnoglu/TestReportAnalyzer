@@ -4,6 +4,66 @@ export const LANGUAGE_LABELS = {
   de: "Deutsch",
 };
 
+export const SUMMARY_SECTION_LABELS = {
+  tr: {
+    summary: "Genel Özet",
+    conditions: "Test Koşulları",
+    improvements: "İyileştirme Önerileri",
+    highlights: "Öne Çıkan Bulgular",
+    technical: "Teknik Analiz Detayları",
+    failures: "Kritik Testler",
+  },
+  en: {
+    summary: "Summary",
+    conditions: "Test Conditions",
+    improvements: "Improvement Suggestions",
+    highlights: "Key Highlights",
+    technical: "Technical Analysis Details",
+    failures: "Critical Tests",
+  },
+  de: {
+    summary: "Zusammenfassung",
+    conditions: "Testbedingungen",
+    improvements: "Verbesserungsvorschläge",
+    highlights: "Wesentliche Erkenntnisse",
+    technical: "Technische Analyse",
+    failures: "Kritische Tests",
+  },
+};
+
+export const STRUCTURED_SECTION_LABELS = {
+  tr: {
+    graphs: "Grafikler",
+    conditions: "Test Koşulları",
+    results: "Sonuçlar",
+    comments: "Uzman Notları",
+  },
+  en: {
+    graphs: "Graphs",
+    conditions: "Test Conditions",
+    results: "Results",
+    comments: "Expert Notes",
+  },
+  de: {
+    graphs: "Diagramme",
+    conditions: "Testbedingungen",
+    results: "Ergebnisse",
+    comments: "Expertenhinweise",
+  },
+};
+
+export const COMPARISON_SECTION_LABELS = {
+  tr: { overview: "Karşılaştırma Özeti", details: "Teknik Farklar" },
+  en: { overview: "Comparison Overview", details: "Technical Differences" },
+  de: { overview: "Vergleichsübersicht", details: "Technische Unterschiede" },
+};
+
+export const COMPARISON_EMPTY_MESSAGES = {
+  tr: "Farklılık bulunamadı.",
+  en: "No differing points were identified.",
+  de: "Es wurden keine Unterschiede festgestellt.",
+};
+
 export const resolveEngineLabel = (engineKey) => {
   if (!engineKey) {
     return "ChatGPT";

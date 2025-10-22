@@ -1,11 +1,54 @@
 import React from "react";
-import { formatAnalysisTimestamp, LANGUAGE_LABELS } from "../utils/analysisUtils";
+import {
+  formatAnalysisTimestamp,
+  LANGUAGE_LABELS,
+  SUMMARY_SECTION_LABELS,
+  STRUCTURED_SECTION_LABELS,
+} from "../utils/analysisUtils";
 
-const SECTION_LABELS = {
-  graphs: "Grafikler",
-  conditions: "Test Koşulları",
-  results: "Sonuçlar",
-  comments: "Uzman Notları",
+const PLACEHOLDER_TEXT = {
+  tr: "İçerik bulunamadı.",
+  en: "No data available.",
+  de: "Keine Daten vorhanden.",
+};
+
+const LANGUAGE_ORDER = ["tr", "en", "de"];
+
+const resolveLocalizedLabels = (languageKey, content) => {
+  const fallback = SUMMARY_SECTION_LABELS[languageKey] || SUMMARY_SECTION_LABELS.tr;
+  const provided = (content && content.labels) || {};
+
+  return {
+    summary: (provided.summary || fallback.summary || "").trim(),
+    conditions: (provided.conditions || fallback.conditions || "").trim(),
+    improvements: (provided.improvements || fallback.improvements || "").trim(),
+    highlights: (provided.highlights || fallback.highlights || "").trim(),
+    technical: (provided.technical || fallback.technical || "").trim(),
+    failures: (provided.failures || fallback.failures || "").trim(),
+  };
+};
+
+const buildStructuredHeading = (sectionKey) => {
+  const tr = STRUCTURED_SECTION_LABELS.tr?.[sectionKey] || sectionKey;
+  const en = STRUCTURED_SECTION_LABELS.en?.[sectionKey] || sectionKey;
+  const de = STRUCTURED_SECTION_LABELS.de?.[sectionKey] || sectionKey;
+  return `${tr} / ${en} / ${de}`;
+};
+
+const renderLocalizedParagraph = (value, languageKey, className = "") => {
+  const text = typeof value === "string" ? value.trim() : "";
+  const classes = className ? [className] : [];
+
+  if (text) {
+    return <p className={classes.join(" ")}>{text}</p>;
+  }
+
+  classes.push("muted-text");
+  return (
+    <p className={classes.join(" ").trim()}>
+      {PLACEHOLDER_TEXT[languageKey] || PLACEHOLDER_TEXT.tr}
+    </p>
+  );
 };
 
 const AnalysisSummaryCard = ({
@@ -44,76 +87,124 @@ const AnalysisSummaryCard = ({
               )}
               {analysis.summaries?.length ? (
                 <ul className="analysis-summary-list">
-                  {analysis.summaries.map((item) => (
-                    <li key={`${analysis.id}-${item.filename}`}>
-                      <div className="analysis-summary-header">
-                        <span className="analysis-summary-file">{item.filename}</span>
-                        <span className="analysis-summary-metrics">
-                          {item.passed_tests}/{item.total_tests} PASS · {item.failed_tests} FAIL
-                        </span>
-                      </div>
-                      {item.report_type_label && (
-                        <p className="muted-text">Analiz edilen test türü: {item.report_type_label}</p>
-                      )}
-                      <p>{item.summary}</p>
-                      {item.condition_evaluation && (
-                        <p className="muted-text">{item.condition_evaluation}</p>
-                      )}
-                      {item.improvement_overview && (
-                        <p className="muted-text">{item.improvement_overview}</p>
-                      )}
-                      {item.structured_sections && (
-                        <div className="analysis-structured-grid">
-                          {Object.entries(item.structured_sections)
-                            .filter(([, value]) => Boolean(value))
-                            .map(([sectionKey, value]) => (
-                              <div
-                                className="analysis-structured-item"
-                                key={`${analysis.id}-${item.filename}-${sectionKey}`}
+                  {analysis.summaries.map((item) => {
+                    const localizedEntries = LANGUAGE_ORDER.map((languageKey) => [
+                      languageKey,
+                      (item.localized_summaries && item.localized_summaries[languageKey]) || {},
+                    ]);
+                    const baseLabels = resolveLocalizedLabels(
+                      "tr",
+                      item.localized_summaries?.tr || {}
+                    );
+
+                    return (
+                      <li key={`${analysis.id}-${item.filename}`}>
+                        <div className="analysis-summary-header">
+                          <span className="analysis-summary-file">{item.filename}</span>
+                          <span className="analysis-summary-metrics">
+                            {item.passed_tests}/{item.total_tests} PASS · {item.failed_tests} FAIL
+                          </span>
+                        </div>
+                        {item.report_type_label && (
+                          <p className="muted-text">
+                            Analiz edilen test türü: {item.report_type_label}
+                          </p>
+                        )}
+                        <div className="analysis-language-accordion">
+                          {localizedEntries.map(([languageKey, content]) => {
+                            const languageLabels = resolveLocalizedLabels(languageKey, content);
+                            return (
+                              <details
+                                className="analysis-language-panel"
+                                key={`${analysis.id}-${item.filename}-${languageKey}`}
                               >
-                                <h4>{SECTION_LABELS[sectionKey] || sectionKey}</h4>
-                                <p>{Array.isArray(value) ? value.join(" ") : value}</p>
+                                <summary className="analysis-language-summary">
+                                  <span className="analysis-language-chip">
+                                    {LANGUAGE_LABELS[languageKey] || languageKey.toUpperCase()}
+                                  </span>
+                                  <span className="analysis-language-heading">
+                                    {languageLabels.summary}
+                                  </span>
+                                </summary>
+                                <div className="analysis-language-content">
+                                  <h4>{languageLabels.summary}</h4>
+                                  {renderLocalizedParagraph(content.summary, languageKey)}
+                                  <h5>{languageLabels.conditions}</h5>
+                                  {renderLocalizedParagraph(
+                                    content.conditions,
+                                    languageKey,
+                                    "muted-text"
+                                  )}
+                                  <h5>{languageLabels.improvements}</h5>
+                                  {renderLocalizedParagraph(
+                                    content.improvements,
+                                    languageKey,
+                                    "muted-text"
+                                  )}
+                                </div>
+                              </details>
+                            );
+                          })}
+                        </div>
+                        <details className="analysis-technical-block">
+                          <summary>{baseLabels.technical}</summary>
+                          <div className="analysis-technical-content">
+                            {item.condition_evaluation && (
+                              <p className="analysis-technical-note">{item.condition_evaluation}</p>
+                            )}
+                            {item.improvement_overview && (
+                              <p className="analysis-technical-note">{item.improvement_overview}</p>
+                            )}
+                            {item.structured_sections && (
+                              <div className="analysis-structured-grid">
+                                {Object.entries(item.structured_sections)
+                                  .filter(([, value]) => Boolean(value))
+                                  .map(([sectionKey, value]) => (
+                                    <div
+                                      className="analysis-structured-item"
+                                      key={`${analysis.id}-${item.filename}-${sectionKey}`}
+                                    >
+                                      <h5>{buildStructuredHeading(sectionKey)}</h5>
+                                      <p>{Array.isArray(value) ? value.join(" ") : value}</p>
+                                    </div>
+                                  ))}
                               </div>
-                            ))}
-                        </div>
-                      )}
-                      {item.localized_summaries && (
-                        <div className="analysis-localized-grid">
-                          {Object.entries(item.localized_summaries).map(([languageKey, content]) => (
-                            <div className="analysis-localized-card" key={`${analysis.id}-${item.filename}-${languageKey}`}>
-                              <h4>{LANGUAGE_LABELS[languageKey] || languageKey.toUpperCase()}</h4>
-                              <p>{content.summary}</p>
-                              <p className="muted-text">{content.conditions}</p>
-                              <p className="muted-text">{content.improvements}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {item.highlights?.length > 0 && (
-                        <ul className="analysis-highlights">
-                          {item.highlights.map((highlight, highlightIndex) => (
-                            <li
-                              key={`${analysis.id}-${item.filename}-highlight-${highlightIndex}`}
-                            >
-                              {highlight}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {item.failures?.length > 0 && (
-                        <ul className="analysis-failure-list">
-                          {item.failures.map((failure) => (
-                            <li key={`${analysis.id}-${item.filename}-${failure.test_name}`}>
-                              <strong>{failure.test_name}:</strong> {failure.failure_reason || "Açıklama yok."}
-                              {failure.suggested_fix && (
-                                <span> — Öneri: {failure.suggested_fix}</span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  ))}
+                            )}
+                            {item.highlights?.length > 0 && (
+                              <div className="analysis-technical-section">
+                                <h5>{baseLabels.highlights}</h5>
+                                <ul className="analysis-highlights">
+                                  {item.highlights.map((highlight, highlightIndex) => (
+                                    <li
+                                      key={`${analysis.id}-${item.filename}-highlight-${highlightIndex}`}
+                                    >
+                                      {highlight}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {item.failures?.length > 0 && (
+                              <div className="analysis-technical-section">
+                                <h5>{baseLabels.failures}</h5>
+                                <ul className="analysis-failure-list">
+                                  {item.failures.map((failure) => (
+                                    <li key={`${analysis.id}-${item.filename}-${failure.test_name}`}>
+                                      <strong>{failure.test_name}:</strong>{" "}
+                                      {failure.failure_reason || "Açıklama yok."}
+                                      {failure.suggested_fix && (
+                                        <span> — Öneri: {failure.suggested_fix}</span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="muted-text">Gösterilecek bir analiz özeti bulunmuyor.</p>

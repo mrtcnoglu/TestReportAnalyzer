@@ -9,6 +9,8 @@ import {
 import { detectReportType, getReportStatusLabel } from "../utils/reportUtils";
 import {
   LANGUAGE_LABELS,
+  COMPARISON_SECTION_LABELS,
+  COMPARISON_EMPTY_MESSAGES,
   createAnalysisEntry,
   resolveEngineLabel,
 } from "../utils/analysisUtils";
@@ -244,21 +246,38 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
           <div className="comparison-summary">
             {compareResult.difference_summary ? (
               <div className="comparison-language-grid">
-                {Object.entries(compareResult.difference_summary).map(([languageKey, content]) => (
-                  <div className="comparison-language-card" key={`comparison-lang-${languageKey}`}>
-                    <h4>{LANGUAGE_LABELS[languageKey] || languageKey.toUpperCase()}</h4>
-                    <p>{content.overview}</p>
-                    {content.details?.length ? (
-                      <ul className="comparison-language-list">
-                        {content.details.map((line, index) => (
-                          <li key={`comparison-detail-${languageKey}-${index}`}>{line}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted-text comparison-empty">Farklılık bulunamadı.</p>
-                    )}
-                  </div>
-                ))}
+                {Object.entries(compareResult.difference_summary).map(([languageKey, content]) => {
+                  const labels =
+                    (content && content.labels) ||
+                    COMPARISON_SECTION_LABELS[languageKey] ||
+                    COMPARISON_SECTION_LABELS.tr;
+                  const emptyDetails =
+                    (content && content.empty_details) ||
+                    COMPARISON_EMPTY_MESSAGES[languageKey] ||
+                    COMPARISON_EMPTY_MESSAGES.tr;
+
+                  return (
+                    <div className="comparison-language-card" key={`comparison-lang-${languageKey}`}>
+                      <h4>{LANGUAGE_LABELS[languageKey] || languageKey.toUpperCase()}</h4>
+                      <div className="comparison-language-section">
+                        <h5>{labels.overview}</h5>
+                        <p>{content?.overview}</p>
+                      </div>
+                      <details className="comparison-language-details">
+                        <summary>{labels.details}</summary>
+                        {content?.details?.length ? (
+                          <ul className="comparison-language-list">
+                            {content.details.map((line, index) => (
+                              <li key={`comparison-detail-${languageKey}-${index}`}>{line}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="muted-text comparison-empty">{emptyDetails}</p>
+                        )}
+                      </details>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p>{compareResult.summary}</p>

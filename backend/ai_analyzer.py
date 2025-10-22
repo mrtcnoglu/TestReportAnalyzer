@@ -14,6 +14,34 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+DEFAULT_SUMMARY_LABELS: Dict[str, Dict[str, str]] = {
+    "tr": {
+        "summary": "Genel Özet",
+        "conditions": "Test Koşulları",
+        "improvements": "İyileştirme Önerileri",
+        "technical": "Teknik Analiz Detayları",
+        "highlights": "Öne Çıkan Bulgular",
+        "failures": "Kritik Testler",
+    },
+    "en": {
+        "summary": "Summary",
+        "conditions": "Test Conditions",
+        "improvements": "Improvement Suggestions",
+        "technical": "Technical Analysis Details",
+        "highlights": "Key Highlights",
+        "failures": "Critical Tests",
+    },
+    "de": {
+        "summary": "Zusammenfassung",
+        "conditions": "Testbedingungen",
+        "improvements": "Verbesserungsvorschläge",
+        "technical": "Technische Analyse",
+        "highlights": "Wesentliche Erkenntnisse",
+        "failures": "Kritische Tests",
+    },
+}
+
+
 class AIAnalyzer:
     """Test başarısızlıklarını AI veya kural tabanlı yöntemlerle analiz eder."""
 
@@ -217,12 +245,22 @@ class AIAnalyzer:
 
         return json.loads(content)
 
-    def _prepare_report_excerpt(self, text: str, limit: int = 6000) -> str:
+    def _prepare_report_excerpt(self, text: str, limit: int = 12000) -> str:
         """PDF metninden özet çıkar ve uzunluğu sınırla."""
         cleaned = re.sub(r"\s+", " ", text.strip())
         if len(cleaned) <= limit:
             return cleaned
-        return textwrap.shorten(cleaned, width=limit, placeholder=" …")
+
+        # Metnin başından, ortasından ve sonundan örnekler alarak bağlamı koru
+        segment_length = max(limit // 3, 1000)
+        head = cleaned[:segment_length]
+        tail = cleaned[-segment_length:]
+        midpoint = len(cleaned) // 2
+        middle_start = max(midpoint - segment_length // 2, 0)
+        middle_end = middle_start + segment_length
+        middle = cleaned[middle_start:middle_end]
+
+        return "\n…\n".join([head.strip(), middle.strip(), tail.strip()])
 
     def _create_report_summary_prompt(
         self,
@@ -262,14 +300,16 @@ Rapor metninden çıkarılmış içerik (görsel ve tablo açıklamaları dahil 
         prompt += """
 
 GÖREV:
-- Metni dikkatlice incele ve grafiklerden, ölçüm koşullarından, sonuçlardan ve varsa yorumlardan bahset.
+- Metni dikkatlice incele; grafikler, ölçüm koşulları, kullanılan standartlar, sonuçlar ve uzman yorumları gibi öğeleri ayrıntılı biçimde değerlendir.
 - Yanıtı mutlaka geçerli JSON formatında ver.
+- Her dil için summary/conditions/improvements alanlarına ek olarak "labels" nesnesi üret ve bu nesnede ilgili başlıkları (ör. "Test Koşulları", "Test Conditions", "Testbedingungen") o dilde ver.
+- "sections" alanında grafikler, test kurulumları, ölçüm sonuçları ve yorumlara dair teknik özeti ayrıntılı doldur.
 - Aşağıdaki yapıyı kullan:
 {
   "localized_summaries": {
-    "tr": {"summary": "...", "conditions": "...", "improvements": "..."},
-    "en": {"summary": "...", "conditions": "...", "improvements": "..."},
-    "de": {"summary": "...", "conditions": "...", "improvements": "..."}
+    "tr": {"summary": "...", "conditions": "...", "improvements": "...", "labels": {"summary": "Genel Özet", "conditions": "Test Koşulları", "improvements": "İyileştirme Önerileri"}},
+    "en": {"summary": "...", "conditions": "...", "improvements": "...", "labels": {"summary": "Summary", "conditions": "Test Conditions", "improvements": "Improvement Suggestions"}},
+    "de": {"summary": "...", "conditions": "...", "improvements": "...", "labels": {"summary": "Zusammenfassung", "conditions": "Testbedingungen", "improvements": "Verbesserungsvorschläge"}}
   },
   "sections": {
     "graphs": "Grafik ve görsel anlatımların özeti",
@@ -295,10 +335,21 @@ Tüm metinleri ilgili dilde üret. JSON dışında açıklama yapma.
         normalised_localized = {}
         for language in ("tr", "en", "de"):
             entry = localized.get(language, {}) if isinstance(localized, dict) else {}
+            raw_labels = entry.get("labels") if isinstance(entry, dict) else {}
+            defaults = DEFAULT_SUMMARY_LABELS.get(language, {})
+            labels = {}
+            for key in ("summary", "conditions", "improvements", "technical", "highlights", "failures"):
+                value = ""
+                if isinstance(raw_labels, dict):
+                    value = str(raw_labels.get(key, "")).strip()
+                default_value = str(defaults.get(key, "")).strip()
+                labels[key] = value or default_value
+
             normalised_localized[language] = {
                 "summary": (entry.get("summary") or "").strip(),
                 "conditions": (entry.get("conditions") or "").strip(),
                 "improvements": (entry.get("improvements") or "").strip(),
+                "labels": labels,
             }
 
         normalised_sections = {}

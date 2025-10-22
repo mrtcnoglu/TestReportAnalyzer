@@ -56,6 +56,33 @@ def _derive_alignment_key(total_tests: int, passed_tests: int, failed_tests: int
     return "unknown"
 
 
+SUMMARY_LABELS = {
+    "tr": {
+        "summary": "Genel Özet",
+        "conditions": "Test Koşulları",
+        "improvements": "İyileştirme Önerileri",
+        "technical": "Teknik Analiz Detayları",
+        "highlights": "Öne Çıkan Bulgular",
+        "failures": "Kritik Testler",
+    },
+    "en": {
+        "summary": "Summary",
+        "conditions": "Test Conditions",
+        "improvements": "Improvement Suggestions",
+        "technical": "Technical Analysis Details",
+        "highlights": "Key Highlights",
+        "failures": "Critical Tests",
+    },
+    "de": {
+        "summary": "Zusammenfassung",
+        "conditions": "Testbedingungen",
+        "improvements": "Verbesserungsvorschläge",
+        "technical": "Technische Analyse",
+        "highlights": "Wesentliche Erkenntnisse",
+        "failures": "Kritische Tests",
+    },
+}
+
 LANGUAGE_TEMPLATES = {
     "tr": {
         "summary": (
@@ -90,6 +117,7 @@ LANGUAGE_TEMPLATES = {
         ),
         "unknown_test_name": "Bilinmeyen Test",
         "default_reason": "Başarısızlık nedeni belirtilmedi",
+        "labels": SUMMARY_LABELS["tr"],
     },
     "en": {
         "summary": (
@@ -124,6 +152,7 @@ LANGUAGE_TEMPLATES = {
         ),
         "unknown_test_name": "Unnamed Test",
         "default_reason": "Failure cause not specified",
+        "labels": SUMMARY_LABELS["en"],
     },
     "de": {
         "summary": (
@@ -160,22 +189,53 @@ LANGUAGE_TEMPLATES = {
         ),
         "unknown_test_name": "Unbenannter Test",
         "default_reason": "Fehlerursache nicht angegeben",
+        "labels": SUMMARY_LABELS["de"],
     },
+}
+
+COMPARISON_LABELS = {
+    "tr": {"overview": "Karşılaştırma Özeti", "details": "Teknik Farklar"},
+    "en": {"overview": "Comparison Overview", "details": "Technical Differences"},
+    "de": {"overview": "Vergleichsübersicht", "details": "Technische Unterschiede"},
+}
+
+COMPARISON_ZERO_OVERVIEW = {
+    "tr": "Seçilen raporların test sonuçları birebir aynı görünüyor; farklılık tespit edilmedi.",
+    "en": "The selected reports share the same test outcomes; no differences were detected.",
+    "de": "Die ausgewählten Berichte zeigen keine Abweichungen in den Testergebnissen.",
+}
+
+COMPARISON_EMPTY_DETAILS = {
+    "tr": "Farklılık bulunamadı.",
+    "en": "No differing points were identified.",
+    "de": "Es wurden keine Unterschiede festgestellt.",
 }
 
 
 def _merge_localized_summaries(fallback: dict, overrides: dict | None) -> dict:
-    if not isinstance(overrides, dict):
-        return fallback
-
     merged = {}
-    for language, default_entry in fallback.items():
+    overrides = overrides if isinstance(overrides, dict) else {}
+
+    for language in ("tr", "en", "de"):
+        default_entry = fallback.get(language, {}) if isinstance(fallback, dict) else {}
         override_entry = overrides.get(language, {}) if isinstance(overrides, dict) else {}
+
+        labels = dict(SUMMARY_LABELS.get(language, {}))
+        for candidate in (default_entry, override_entry):
+            candidate_labels = candidate.get("labels") if isinstance(candidate, dict) else {}
+            if isinstance(candidate_labels, dict):
+                for key, value in candidate_labels.items():
+                    value_str = str(value).strip()
+                    if value_str:
+                        labels[key] = value_str
+
         merged[language] = {
             "summary": (override_entry.get("summary") or default_entry.get("summary") or "").strip(),
             "conditions": (override_entry.get("conditions") or default_entry.get("conditions") or "").strip(),
             "improvements": (override_entry.get("improvements") or default_entry.get("improvements") or "").strip(),
+            "labels": labels,
         }
+
     return merged
 
 
@@ -390,37 +450,33 @@ def _build_localized_comparison_summary(
 ) -> dict:
     summaries = {}
     difference_count = len(differences)
-    if difference_count == 0:
-        return {
-            "tr": {
-                "overview": "Seçilen raporların test sonuçları birebir aynı görünüyor; farklılık tespit edilmedi.",
-                "details": [],
-            },
-            "en": {
-                "overview": "The selected reports share the same test outcomes; no differences were detected.",
-                "details": [],
-            },
-            "de": {
-                "overview": "Die ausgewählten Berichte zeigen keine Abweichungen in den Testergebnissen.",
-                "details": [],
-            },
-        }
 
     for language in ("tr", "en", "de"):
-        sentences = [_format_difference_sentence(language, diff) for diff in differences]
-        if language == "en":
-            overview = (
-                f"{difference_count} test differs between {first_report_label} and {second_report_label}."
-            )
-        elif language == "de":
-            overview = (
-                f"Zwischen {first_report_label} und {second_report_label} unterscheiden sich {difference_count} Tests."
-            )
+        labels = dict(COMPARISON_LABELS.get(language, {}))
+
+        if difference_count == 0:
+            overview = COMPARISON_ZERO_OVERVIEW.get(language, "")
+            sentences: list[str] = []
         else:
-            overview = (
-                f"{first_report_label} ile {second_report_label} arasında {difference_count} test sonucunda farklılık var."
-            )
-        summaries[language] = {"overview": overview, "details": sentences}
+            sentences = [_format_difference_sentence(language, diff) for diff in differences]
+            if language == "en":
+                overview = (
+                    f"{difference_count} test differs between {first_report_label} and {second_report_label}."
+                )
+            elif language == "de":
+                overview = (
+                    f"Zwischen {first_report_label} und {second_report_label} unterscheiden sich {difference_count} Tests."
+                )
+            else:
+                overview = (
+                    f"{first_report_label} ile {second_report_label} arasında {difference_count} test sonucunda farklılık var."
+                )
+
+        entry = {"overview": overview, "details": sentences, "labels": labels}
+        if not sentences:
+            entry["empty_details"] = COMPARISON_EMPTY_DETAILS.get(language, "")
+
+        summaries[language] = entry
 
     return summaries
 
@@ -442,6 +498,7 @@ def _build_multilingual_summary(
 
     summaries = {}
     for language, config in LANGUAGE_TEMPLATES.items():
+        labels = dict(config.get("labels", {}))
         if total == 0:
             summary_text = config["no_tests"].format(
                 engine=engine_label,
@@ -498,6 +555,7 @@ def _build_multilingual_summary(
             "summary": summary_text,
             "conditions": conditions_text,
             "improvements": improvements_text,
+            "labels": labels,
         }
 
     return summaries
