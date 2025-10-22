@@ -28,11 +28,167 @@ const resolveLocalizedLabels = (languageKey, content) => {
   };
 };
 
-const buildStructuredHeading = (sectionKey) => {
-  const tr = STRUCTURED_SECTION_LABELS.tr?.[sectionKey] || sectionKey;
-  const en = STRUCTURED_SECTION_LABELS.en?.[sectionKey] || sectionKey;
-  const de = STRUCTURED_SECTION_LABELS.de?.[sectionKey] || sectionKey;
-  return `${tr} / ${en} / ${de}`;
+const getStructuredLabel = (sectionKey, languageKey) => {
+  const languageLabels = STRUCTURED_SECTION_LABELS[languageKey];
+  if (languageLabels && languageLabels[sectionKey]) {
+    return languageLabels[sectionKey];
+  }
+
+  const fallback =
+    STRUCTURED_SECTION_LABELS.tr?.[sectionKey] ||
+    STRUCTURED_SECTION_LABELS.en?.[sectionKey] ||
+    STRUCTURED_SECTION_LABELS.de?.[sectionKey] ||
+    sectionKey;
+
+  return fallback;
+};
+
+const normaliseStructuredValue = (rawValue, languageKey) => {
+  if (!rawValue) {
+    return "";
+  }
+
+  if (typeof rawValue === "string") {
+    return rawValue.trim();
+  }
+
+  if (Array.isArray(rawValue)) {
+    return rawValue
+      .map((item) => String(item || "").trim())
+      .filter((entry) => entry.length > 0)
+      .join(" ");
+  }
+
+  if (typeof rawValue === "object") {
+    const direct = rawValue[languageKey];
+    if (typeof direct === "string") {
+      return direct.trim();
+    }
+    if (Array.isArray(direct)) {
+      return direct
+        .map((item) => String(item || "").trim())
+        .filter((entry) => entry.length > 0)
+        .join(" ");
+    }
+
+    const fallbackValue = Object.values(rawValue).find((value) => {
+      if (typeof value === "string") {
+        return value.trim().length > 0;
+      }
+      if (Array.isArray(value)) {
+        return value.some((item) => String(item || "").trim().length > 0);
+      }
+      return false;
+    });
+
+    if (typeof fallbackValue === "string") {
+      return fallbackValue.trim();
+    }
+
+    if (Array.isArray(fallbackValue)) {
+      return fallbackValue
+        .map((item) => String(item || "").trim())
+        .filter((entry) => entry.length > 0)
+        .join(" ");
+    }
+  }
+
+  return String(rawValue).trim();
+};
+
+const hasStructuredContent = (rawValue) => {
+  if (!rawValue) {
+    return false;
+  }
+
+  if (typeof rawValue === "string") {
+    return rawValue.trim().length > 0;
+  }
+
+  if (Array.isArray(rawValue)) {
+    return rawValue.some((item) => String(item || "").trim().length > 0);
+  }
+
+  if (typeof rawValue === "object") {
+    return Object.values(rawValue).some((value) => {
+      if (typeof value === "string") {
+        return value.trim().length > 0;
+      }
+      if (Array.isArray(value)) {
+        return value.some((item) => String(item || "").trim().length > 0);
+      }
+      return false;
+    });
+  }
+
+  return false;
+};
+
+const parseConditionEntries = (text) => {
+  if (typeof text !== "string") {
+    return [];
+  }
+
+  const segments = text
+    .replace(/\r/g, "")
+    .split(/[\n;]+/)
+    .map((segment) => segment.replace(/^[-•*]+\s*/, "").trim())
+    .filter(Boolean);
+
+  if (!segments.length) {
+    const cleaned = text.trim();
+    return cleaned ? [{ type: "text", value: cleaned }] : [];
+  }
+
+  return segments.map((segment) => {
+    const colonIndex = segment.indexOf(":");
+    if (colonIndex > 0 && colonIndex < segment.length - 1) {
+      return {
+        type: "kv",
+        label: segment.slice(0, colonIndex).trim(),
+        value: segment.slice(colonIndex + 1).trim(),
+      };
+    }
+
+    return { type: "text", value: segment };
+  });
+};
+
+const renderConditionsContent = (value, languageKey) => {
+  const entries = parseConditionEntries(value);
+
+  if (!entries.length) {
+    return (
+      <p className="muted-text">
+        {PLACEHOLDER_TEXT[languageKey] || PLACEHOLDER_TEXT.tr}
+      </p>
+    );
+  }
+
+  const keyValueEntries = entries.filter((entry) => entry.type === "kv");
+  const textEntries = entries.filter((entry) => entry.type !== "kv");
+
+  return (
+    <div className="analysis-conditions-content">
+      {keyValueEntries.length > 0 ? (
+        <dl className="analysis-conditions-grid">
+          {keyValueEntries.map((entry, index) => (
+            <div className="analysis-condition-pair" key={`condition-kv-${index}`}>
+              <dt>{entry.label}</dt>
+              <dd>{entry.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {textEntries.length > 0 ? (
+        <ul className="analysis-conditions-list">
+          {textEntries.map((entry, index) => (
+            <li key={`condition-text-${index}`}>{entry.value}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 };
 
 const renderLocalizedParagraph = (value, languageKey, className = "") => {
@@ -130,10 +286,9 @@ const AnalysisSummaryCard = ({
                                   <h4>{languageLabels.summary}</h4>
                                   {renderLocalizedParagraph(content.summary, languageKey)}
                                   <h5>{languageLabels.conditions}</h5>
-                                  {renderLocalizedParagraph(
+                                  {renderConditionsContent(
                                     content.conditions,
-                                    languageKey,
-                                    "muted-text"
+                                    languageKey
                                   )}
                                   <h5>{languageLabels.improvements}</h5>
                                   {renderLocalizedParagraph(
@@ -156,16 +311,56 @@ const AnalysisSummaryCard = ({
                               <p className="analysis-technical-note">{item.improvement_overview}</p>
                             )}
                             {item.structured_sections && (
-                              <div className="analysis-structured-grid">
+                              <div className="analysis-structured-sections">
                                 {Object.entries(item.structured_sections)
-                                  .filter(([, value]) => Boolean(value))
+                                  .filter(([, value]) => hasStructuredContent(value))
                                   .map(([sectionKey, value]) => (
                                     <div
-                                      className="analysis-structured-item"
+                                      className="analysis-structured-section"
                                       key={`${analysis.id}-${item.filename}-${sectionKey}`}
                                     >
-                                      <h5>{buildStructuredHeading(sectionKey)}</h5>
-                                      <p>{Array.isArray(value) ? value.join(" ") : value}</p>
+                                      <h5 className="analysis-structured-section-title">
+                                        {getStructuredLabel(sectionKey, "tr")}
+                                      </h5>
+                                      <div className="analysis-structured-language-grid">
+                                        {LANGUAGE_ORDER.map((languageKey) => {
+                                          const sectionLabel = getStructuredLabel(
+                                            sectionKey,
+                                            languageKey
+                                          );
+                                          const sectionContent = normaliseStructuredValue(
+                                            value,
+                                            languageKey
+                                          );
+
+                                          return (
+                                            <div
+                                              className="analysis-structured-language-card"
+                                              key={`${analysis.id}-${item.filename}-${sectionKey}-${languageKey}`}
+                                            >
+                                              <div className="analysis-structured-language-header">
+                                                <span className="analysis-language-chip">
+                                                  {LANGUAGE_LABELS[languageKey] ||
+                                                    languageKey.toUpperCase()}
+                                                </span>
+                                                <span className="analysis-structured-language-title">
+                                                  {sectionLabel}
+                                                </span>
+                                              </div>
+                                              {sectionContent ? (
+                                                <p>{sectionContent}</p>
+                                              ) : (
+                                                <p className="muted-text">
+                                                  {
+                                                    PLACEHOLDER_TEXT[languageKey] ||
+                                                    PLACEHOLDER_TEXT.tr
+                                                  }
+                                                </p>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
                                   ))}
                               </div>
