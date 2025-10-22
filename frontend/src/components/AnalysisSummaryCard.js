@@ -1,6 +1,13 @@
 import React from "react";
 import { formatAnalysisTimestamp, LANGUAGE_LABELS } from "../utils/analysisUtils";
 
+const SECTION_LABELS = {
+  graphs: "Grafikler",
+  conditions: "Test Koşulları",
+  results: "Sonuçlar",
+  comments: "Uzman Notları",
+};
+
 const AnalysisSummaryCard = ({
   title = "Analiz Özeti",
   analyses = [],
@@ -55,6 +62,21 @@ const AnalysisSummaryCard = ({
                       {item.improvement_overview && (
                         <p className="muted-text">{item.improvement_overview}</p>
                       )}
+                      {item.structured_sections && (
+                        <div className="analysis-structured-grid">
+                          {Object.entries(item.structured_sections)
+                            .filter(([, value]) => Boolean(value))
+                            .map(([sectionKey, value]) => (
+                              <div
+                                className="analysis-structured-item"
+                                key={`${analysis.id}-${item.filename}-${sectionKey}`}
+                              >
+                                <h4>{SECTION_LABELS[sectionKey] || sectionKey}</h4>
+                                <p>{Array.isArray(value) ? value.join(" ") : value}</p>
+                              </div>
+                            ))}
+                        </div>
+                      )}
                       {item.localized_summaries && (
                         <div className="analysis-localized-grid">
                           {Object.entries(item.localized_summaries).map(([languageKey, content]) => (
@@ -66,6 +88,17 @@ const AnalysisSummaryCard = ({
                             </div>
                           ))}
                         </div>
+                      )}
+                      {item.highlights?.length > 0 && (
+                        <ul className="analysis-highlights">
+                          {item.highlights.map((highlight, highlightIndex) => (
+                            <li
+                              key={`${analysis.id}-${item.filename}-highlight-${highlightIndex}`}
+                            >
+                              {highlight}
+                            </li>
+                          ))}
+                        </ul>
                       )}
                       {item.failures?.length > 0 && (
                         <ul className="analysis-failure-list">

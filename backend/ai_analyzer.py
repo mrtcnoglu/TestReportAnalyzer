@@ -3,7 +3,9 @@
 
 import json
 import os
-from typing import Dict
+import re
+import textwrap
+from typing import Dict, List, Optional, Sequence
 
 from anthropic import Anthropic
 from openai import OpenAI
@@ -126,27 +128,7 @@ class AIAnalyzer:
             return self._rule_based_analysis(error_message)
 
         try:
-            client = self.claude_client
-            if hasattr(client, "with_options"):
-                client = client.with_options(timeout=self.timeout)
-
-            response = client.messages.create(
-                model=self.claude_model,
-                max_output_tokens=self.max_tokens,
-                temperature=0,
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-            content = ""
-            if getattr(response, "content", None):
-                content = "".join(
-                    getattr(block, "text", "") for block in response.content if getattr(block, "text", "")
-                )
-
-            if not content:
-                raise ValueError("Claude yanıtı boş döndü")
-
-            data = json.loads(content)
+            data = self._request_json_from_claude(prompt, max_tokens=self.max_tokens)
             failure_reason = data.get("failure_reason", "").strip()
             suggested_fix = data.get("suggested_fix", "").strip()
             if not failure_reason or not suggested_fix:
@@ -166,27 +148,7 @@ class AIAnalyzer:
             return self._rule_based_analysis(error_message)
 
         try:
-            client = self.openai_client
-            if hasattr(client, "with_options"):
-                client = client.with_options(timeout=self.timeout)
-
-            response = client.chat.completions.create(
-                model=self.openai_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Sen uzman bir test analisti olarak Türkçe konuşuyorsun. Yanıtı JSON formatında üret.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=self.max_tokens,
-                temperature=0,
-            )
-
-            content = response.choices[0].message.content if response.choices else ""
-            if not content:
-                raise ValueError("ChatGPT yanıtı boş döndü")
-            data = json.loads(content)
+            data = self._request_json_from_chatgpt(prompt, max_tokens=self.max_tokens)
             failure_reason = data.get("failure_reason", "").strip()
             suggested_fix = data.get("suggested_fix", "").strip()
             if not failure_reason or not suggested_fix:
@@ -199,6 +161,215 @@ class AIAnalyzer:
         except Exception as exc:  # pragma: no cover - API hataları kullanıcıya gösterilmez
             print(f"[AIAnalyzer] ChatGPT analizi başarısız: {exc}")
             return self._rule_based_analysis(error_message)
+
+    def _request_json_from_claude(self, prompt: str, max_tokens: Optional[int] = None) -> Dict:
+        """Claude API'sinden JSON içerik döndür."""
+        if not self.claude_client:
+            raise ValueError("Claude client not configured")
+
+        client = self.claude_client
+        if hasattr(client, "with_options"):
+            client = client.with_options(timeout=self.timeout)
+
+        response = client.messages.create(
+            model=self.claude_model,
+            max_output_tokens=max_tokens or self.max_tokens,
+            temperature=0,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        content = ""
+        if getattr(response, "content", None):
+            content = "".join(
+                getattr(block, "text", "") for block in response.content if getattr(block, "text", "")
+            )
+
+        if not content:
+            raise ValueError("Claude yanıtı boş döndü")
+
+        return json.loads(content)
+
+    def _request_json_from_chatgpt(self, prompt: str, max_tokens: Optional[int] = None) -> Dict:
+        """OpenAI Chat Completions API çağrısından JSON yanıtı döndür."""
+        if not self.openai_client:
+            raise ValueError("ChatGPT client not configured")
+
+        client = self.openai_client
+        if hasattr(client, "with_options"):
+            client = client.with_options(timeout=self.timeout)
+
+        response = client.chat.completions.create(
+            model=self.openai_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Sen uzman bir test analisti olarak Türkçe konuşuyorsun. Yanıtı JSON formatında üret.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=max_tokens or self.max_tokens,
+            temperature=0,
+        )
+
+        content = response.choices[0].message.content if response.choices else ""
+        if not content:
+            raise ValueError("ChatGPT yanıtı boş döndü")
+
+        return json.loads(content)
+
+    def _prepare_report_excerpt(self, text: str, limit: int = 6000) -> str:
+        """PDF metninden özet çıkar ve uzunluğu sınırla."""
+        cleaned = re.sub(r"\s+", " ", text.strip())
+        if len(cleaned) <= limit:
+            return cleaned
+        return textwrap.shorten(cleaned, width=limit, placeholder=" …")
+
+    def _create_report_summary_prompt(
+        self,
+        *,
+        filename: str,
+        report_type: str,
+        total_tests: int,
+        passed_tests: int,
+        failed_tests: int,
+        excerpt: str,
+        failure_details: Sequence[Dict[str, str]],
+    ) -> str:
+        """Raporun tamamını özetleyecek çok dilli JSON yanıtı iste."""
+
+        failure_lines: List[str] = []
+        for failure in failure_details:
+            test_name = failure.get("test_name", "Bilinmeyen Test")
+            reason = failure.get("failure_reason") or failure.get("error_message") or ""
+            suggestion = failure.get("suggested_fix") or ""
+            joined = f"{test_name}: {reason}".strip()
+            if suggestion:
+                joined += f" | Öneri: {suggestion}"
+            failure_lines.append(joined)
+
+        failure_block = "\n".join(failure_lines) if failure_lines else "(başarısız test bulunmuyor)"
+
+        prompt = f"""
+PDF test raporunu analiz eden uzman bir mühendis olarak hareket et. Rapor dosya adı: {filename}. Test türü: {report_type}.
+Toplam test sayısı: {total_tests}. Başarılı test sayısı: {passed_tests}. Başarısız test sayısı: {failed_tests}.
+Başarısız testlerin özet listesi:
+{failure_block}
+
+Rapor metninden çıkarılmış içerik (görsel ve tablo açıklamaları dahil olabilir):
+"""
+
+        prompt += excerpt
+        prompt += """
+
+GÖREV:
+- Metni dikkatlice incele ve grafiklerden, ölçüm koşullarından, sonuçlardan ve varsa yorumlardan bahset.
+- Yanıtı mutlaka geçerli JSON formatında ver.
+- Aşağıdaki yapıyı kullan:
+{
+  "localized_summaries": {
+    "tr": {"summary": "...", "conditions": "...", "improvements": "..."},
+    "en": {"summary": "...", "conditions": "...", "improvements": "..."},
+    "de": {"summary": "...", "conditions": "...", "improvements": "..."}
+  },
+  "sections": {
+    "graphs": "Grafik ve görsel anlatımların özeti",
+    "conditions": "Test kurulumları ve çevresel koşullar",
+    "results": "Önemli ölçüm sonuçları",
+    "comments": "Uzman görüşü veya değerlendirilen yorumlar"
+  },
+  "highlights": ["En fazla 5 kısa maddelik önemli bulgular listesi"]
+}
+
+Tüm metinleri ilgili dilde üret. JSON dışında açıklama yapma.
+"""
+
+        return textwrap.dedent(prompt).strip()
+
+    def _normalise_summary_response(self, payload: Dict) -> Dict[str, object]:
+        """AI yanıtını öngörülen anahtarlara göre düzenle."""
+
+        localized = payload.get("localized_summaries") or payload.get("localized") or payload.get("languages") or {}
+        sections = payload.get("sections") or payload.get("structured_sections") or {}
+        highlights = payload.get("highlights") or payload.get("key_findings") or []
+
+        normalised_localized = {}
+        for language in ("tr", "en", "de"):
+            entry = localized.get(language, {}) if isinstance(localized, dict) else {}
+            normalised_localized[language] = {
+                "summary": (entry.get("summary") or "").strip(),
+                "conditions": (entry.get("conditions") or "").strip(),
+                "improvements": (entry.get("improvements") or "").strip(),
+            }
+
+        normalised_sections = {}
+        if isinstance(sections, dict):
+            for key in ("graphs", "conditions", "results", "comments"):
+                value = sections.get(key, "")
+                if isinstance(value, list):
+                    value = " ".join(str(item).strip() for item in value if str(item).strip())
+                normalised_sections[key] = str(value).strip()
+
+        normalised_highlights: List[str] = []
+        if isinstance(highlights, (list, tuple)):
+            for item in highlights:
+                text = str(item).strip()
+                if text:
+                    normalised_highlights.append(text)
+
+        return {
+            "localized_summaries": normalised_localized,
+            "sections": normalised_sections,
+            "highlights": normalised_highlights,
+        }
+
+    def generate_report_summary(
+        self,
+        *,
+        filename: str,
+        report_type: str,
+        total_tests: int,
+        passed_tests: int,
+        failed_tests: int,
+        raw_text: str,
+        failure_details: Sequence[Dict[str, str]],
+    ) -> Optional[Dict[str, object]]:
+        """PDF metnini detaylı şekilde inceleyen bir özet üret."""
+
+        self._refresh_configuration()
+        provider = (self.provider or "none").lower()
+        if provider == "none":
+            return None
+
+        excerpt = self._prepare_report_excerpt(raw_text)
+        prompt = self._create_report_summary_prompt(
+            filename=filename,
+            report_type=report_type,
+            total_tests=total_tests,
+            passed_tests=passed_tests,
+            failed_tests=failed_tests,
+            excerpt=excerpt,
+            failure_details=failure_details,
+        )
+
+        providers: List[str]
+        if provider == "both":
+            providers = ["claude", "chatgpt"]
+        else:
+            providers = [provider]
+
+        for candidate in providers:
+            try:
+                if candidate == "claude":
+                    data = self._request_json_from_claude(prompt, max_tokens=min(self.max_tokens * 2, 1500))
+                else:
+                    data = self._request_json_from_chatgpt(prompt, max_tokens=min(self.max_tokens * 2, 1500))
+                if not isinstance(data, dict):
+                    continue
+                return self._normalise_summary_response(data)
+            except Exception as exc:  # pragma: no cover - ağ hataları raporlanmaz
+                print(f"[AIAnalyzer] Rapor özeti üretilemedi ({candidate}): {exc}")
+
+        return None
 
     def _rule_based_analysis(self, error_message: str) -> Dict[str, str]:
         """Basit kural tabanlı analizle fallback sonucu döndür."""
