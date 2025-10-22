@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { getAllReports } from "./api";
 import AllReports from "./components/AllReports";
@@ -9,6 +9,7 @@ import ReportDetail from "./components/ReportDetail";
 import SettingsPanel from "./components/SettingsPanel";
 import TestReportsBoard from "./components/TestReportsBoard";
 import { detectReportType } from "./utils/reportUtils";
+import { createAnalysisEntry } from "./utils/analysisUtils";
 
 const NAV_ITEMS = [
   { path: "/", label: "Ana Sayfa", exact: true },
@@ -28,6 +29,7 @@ const App = () => {
   const [theme, setTheme] = useState("dark");
   const [analysisEngine, setAnalysisEngine] = useState("chatgpt");
   const [searchQuery, setSearchQuery] = useState("");
+  const [analysisHistory, setAnalysisHistory] = useState([]);
   const navigate = useNavigate();
 
   const fetchReports = async () => {
@@ -57,6 +59,34 @@ const App = () => {
     const r10 = reports.filter((report) => detectReportType(report) === "R10 EMC Testi");
     return { r80, r10 };
   }, [reports]);
+
+  const handleAnalysisComplete = useCallback(
+    (result, context = {}) => {
+      if (!result) {
+        return null;
+      }
+
+      const entry = createAnalysisEntry(result, {
+        engineKey: context.engineKey ?? analysisEngine,
+        source: context.source ?? "home",
+      });
+
+      if (!entry) {
+        return null;
+      }
+
+      setAnalysisHistory((prev) => [entry, ...prev]);
+      return entry;
+    },
+    [analysisEngine]
+  );
+
+  const clearAnalysisHistory = useCallback(() => {
+    setAnalysisHistory([]);
+  }, []);
+
+  const recentAnalyses = useMemo(() => analysisHistory.slice(0, 2), [analysisHistory]);
+  const archivedAnalyses = useMemo(() => analysisHistory.slice(2), [analysisHistory]);
 
   const filteredReports = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -192,13 +222,20 @@ const App = () => {
                   loading={loading}
                   error={error}
                   analysisEngine={analysisEngine}
+                  recentAnalyses={recentAnalyses}
+                  onAnalysisComplete={handleAnalysisComplete}
+                  onClearAnalyses={clearAnalysisHistory}
                 />
               }
             />
             <Route
               path="/archive"
               element={
-                <ArchiveManagement reports={reports} analysisEngine={analysisEngine} />
+                <ArchiveManagement
+                  reports={reports}
+                  analysisEngine={analysisEngine}
+                  analysisArchive={archivedAnalyses}
+                />
               }
             />
             <Route
@@ -212,6 +249,7 @@ const App = () => {
                   title="R80 Darbe Testleri"
                   reports={reportGroups.r80}
                   analysisEngine={analysisEngine}
+                  onAnalysisComplete={handleAnalysisComplete}
                 />
               }
             />
@@ -222,6 +260,7 @@ const App = () => {
                   title="R10 EMC Testleri"
                   reports={reportGroups.r10}
                   analysisEngine={analysisEngine}
+                  onAnalysisComplete={handleAnalysisComplete}
                 />
               }
             />

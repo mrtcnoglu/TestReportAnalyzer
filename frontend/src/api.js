@@ -47,13 +47,21 @@ export const getAIStatus = async () => {
 
 export const analyzeReportsWithAI = async (files, engine) => {
   const formData = new FormData();
-  files.forEach((file) => {
-    formData.append("files", file);
+  files.forEach((file, index) => {
+    const fileName = file?.name || `report-${index + 1}.pdf`;
+    formData.append("files", file, fileName);
   });
   formData.append("engine", engine);
 
   const response = await client.post("/analyze-files", formData, {
     headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+};
+
+export const downloadReportFile = async (id) => {
+  const response = await client.get(`/reports/${id}/download`, {
+    responseType: "blob",
   });
   return response.data;
 };

@@ -1,17 +1,19 @@
 import React, { useCallback, useMemo, useState } from "react";
 import UploadForm from "./UploadForm";
+import AnalysisSummaryCard from "./AnalysisSummaryCard";
 import { resetAllData } from "../api";
 import { detectReportType } from "../utils/reportUtils";
 
-const LANGUAGE_LABELS = {
-  tr: "Türkçe",
-  en: "English",
-  de: "Deutsch",
-};
-
-const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => {
-  const [analysisSummaries, setAnalysisSummaries] = useState([]);
-  const [analysisInfo, setAnalysisInfo] = useState(null);
+const HomeSection = ({
+  reports,
+  onRefresh,
+  loading,
+  error,
+  analysisEngine,
+  recentAnalyses = [],
+  onAnalysisComplete,
+  onClearAnalyses,
+}) => {
   const [resetStatus, setResetStatus] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -51,25 +53,9 @@ const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => 
     };
   }, [reports]);
 
-  const clearAnalysisSummary = useCallback(() => {
-    setAnalysisSummaries([]);
-    setAnalysisInfo(null);
-  }, []);
-
   const handleAnalysisComplete = useCallback(
-    (result) => {
-      if (!result) {
-        clearAnalysisSummary();
-        return;
-      }
-
-      setAnalysisSummaries(result.summaries ?? []);
-      setAnalysisInfo({
-        message: result.message ?? "",
-        engine: result.engine ?? (analysisEngine === "claude" ? "Claude" : "ChatGPT"),
-      });
-    },
-    [analysisEngine, clearAnalysisSummary]
+    (result) => onAnalysisComplete?.(result, { source: "home", engineKey: analysisEngine }),
+    [analysisEngine, onAnalysisComplete]
   );
 
   const handleResetAll = useCallback(async () => {
@@ -78,7 +64,7 @@ const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => 
     try {
       const response = await resetAllData();
       setResetStatus({ type: "success", message: response.message });
-      clearAnalysisSummary();
+      onClearAnalyses?.();
       if (typeof onRefresh === "function") {
         await onRefresh();
       }
@@ -89,7 +75,7 @@ const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => 
     } finally {
       setIsResetting(false);
     }
-  }, [onRefresh, clearAnalysisSummary]);
+  }, [onRefresh, onClearAnalyses]);
 
   return (
     <div className="home-section">
@@ -131,7 +117,6 @@ const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => 
           onUploadSuccess={onRefresh}
           analysisEngine={analysisEngine}
           onAnalysisComplete={handleAnalysisComplete}
-          onClearAnalysis={clearAnalysisSummary}
         />
       </div>
       <div className="card supported-types-card">
@@ -167,65 +152,15 @@ const HomeSection = ({ reports, onRefresh, loading, error, analysisEngine }) => 
           </div>
         )}
       </div>
-      <div className="card analysis-summary-card">
-        <h3>Analiz Özeti</h3>
-        <p className="muted-text">
-          {analysisInfo?.message
-            ? `${analysisInfo.engine} tarafından oluşturulan en güncel çok dilli özet aşağıdadır.`
-            : "AI analizi gerçekleştirmek için PDF seçip 'PDF Yükle ve AI ile Analiz Et' butonuna tıklayın."}
-        </p>
-        {analysisInfo?.message && (
-          <div className="alert alert-info">{analysisInfo.message}</div>
-        )}
-        {analysisSummaries.length === 0 ? (
-          <p className="muted-text">Gösterilecek bir analiz özeti bulunmuyor.</p>
-        ) : (
-          <ul className="analysis-summary-list">
-            {analysisSummaries.map((item) => (
-              <li key={item.filename}>
-                <div className="analysis-summary-header">
-                  <span className="analysis-summary-file">{item.filename}</span>
-                  <span className="analysis-summary-metrics">
-                    {item.passed_tests}/{item.total_tests} PASS · {item.failed_tests} FAIL
-                  </span>
-                </div>
-                {item.report_type_label && (
-                  <p className="muted-text">Analiz edilen test türü: {item.report_type_label}</p>
-                )}
-                <p>{item.summary}</p>
-                {item.condition_evaluation && (
-                  <p className="muted-text">{item.condition_evaluation}</p>
-                )}
-                {item.improvement_overview && (
-                  <p className="muted-text">{item.improvement_overview}</p>
-                )}
-                {item.localized_summaries && (
-                  <div className="analysis-localized-grid">
-                    {Object.entries(item.localized_summaries).map(([languageKey, content]) => (
-                      <div className="analysis-localized-card" key={`${item.filename}-${languageKey}`}>
-                        <h4>{LANGUAGE_LABELS[languageKey] || languageKey.toUpperCase()}</h4>
-                        <p>{content.summary}</p>
-                        <p className="muted-text">{content.conditions}</p>
-                        <p className="muted-text">{content.improvements}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {item.failures?.length > 0 && (
-                  <ul className="analysis-failure-list">
-                    {item.failures.map((failure) => (
-                      <li key={`${item.filename}-${failure.test_name}`}>
-                        <strong>{failure.test_name}:</strong> {failure.failure_reason || "Açıklama yok."}
-                        {failure.suggested_fix && <span> — Öneri: {failure.suggested_fix}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <AnalysisSummaryCard
+        analyses={recentAnalyses}
+        title="Analiz Özeti"
+        introText={
+          recentAnalyses.length > 0
+            ? "Son gerçekleştirilen en fazla iki AI analizi aşağıda listelenmiştir."
+            : "AI analizi gerçekleştirmek için PDF seçip 'PDF Yükle ve AI ile Analiz Et' butonuna tıklayın."
+        }
+      />
     </div>
   );
 };
