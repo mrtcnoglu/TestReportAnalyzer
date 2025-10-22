@@ -239,6 +239,61 @@ def _merge_localized_summaries(fallback: dict, overrides: dict | None) -> dict:
     return merged
 
 
+def _ensure_multilingual_entries(
+    values: dict[str, str], *, translator=None
+) -> dict[str, str]:
+    normalised: dict[str, str] = {}
+    for language, text in values.items():
+        language_key = str(language).strip().lower()
+        cleaned = str(text or "").strip()
+        if language_key and cleaned:
+            normalised[language_key] = cleaned
+
+    if not normalised:
+        return {}
+
+    required_languages = ("tr", "en", "de")
+    missing = [lang for lang in required_languages if not normalised.get(lang)]
+    if not missing:
+        return normalised
+
+    source_language = None
+    for candidate in required_languages:
+        if normalised.get(candidate):
+            source_language = candidate
+            break
+
+    if not source_language:
+        sample_text = next(iter(normalised.values()), "")
+        detected_language = _detect_language(sample_text)
+        if detected_language:
+            source_language = detected_language
+        else:
+            source_language = next(iter(normalised.keys()), "en")
+
+    source_text = normalised.get(source_language) or next(iter(normalised.values()))
+
+    translations: dict[str, str] = {}
+    if translator and source_text:
+        try:
+            translations = translator.translate_texts(
+                source_text,
+                source_language=source_language,
+                target_languages=missing,
+            )
+        except Exception as exc:  # pragma: no cover - yalnızca tanılama
+            print(f"[routes] Çeviri isteği başarısız: {exc}")
+            translations = {}
+
+    for language in missing:
+        translated = (translations.get(language) or "").strip() if translations else ""
+        if not translated:
+            translated = source_text
+        normalised[language] = translated
+
+    return normalised
+
+
 _LANGUAGE_DIACRITIC_HINTS = {
     "tr": "çğıöşüâîûı",
     "de": "äöüß",
@@ -355,7 +410,9 @@ def _normalize_structured_section_value(value: object) -> dict[str, str]:
     return _wrap_multilingual_text(str(value))
 
 
-def _merge_structured_sections(fallback: dict, overrides: dict | None) -> dict:
+def _merge_structured_sections(
+    fallback: dict, overrides: dict | None, *, translator=None
+) -> dict:
     overrides = overrides or {}
     if not isinstance(overrides, dict):
         overrides = {}
@@ -364,9 +421,16 @@ def _merge_structured_sections(fallback: dict, overrides: dict | None) -> dict:
     for key in ("graphs", "conditions", "results", "comments"):
         base = _normalize_structured_section_value(fallback.get(key))
         override_value = _normalize_structured_section_value(overrides.get(key))
-        combined = {**base, **override_value}
+        combined: dict[str, str] = {}
+        combined.update(base)
+        combined.update(override_value)
+        combined = {
+            str(language).strip().lower(): str(text or "").strip()
+            for language, text in combined.items()
+            if str(language).strip() and str(text or "").strip()
+        }
         if combined:
-            merged[key] = combined
+            merged[key] = _ensure_multilingual_entries(combined, translator=translator)
     return merged
 
 
@@ -1127,7 +1191,9 @@ def analyze_files_with_ai():
             report_type_label,
         )
         structured_sections = _merge_structured_sections(
-            fallback_sections, (ai_summary_payload or {}).get("sections") if ai_summary_payload else None
+            fallback_sections,
+            (ai_summary_payload or {}).get("sections") if ai_summary_payload else None,
+            translator=ai_analyzer,
         )
 
         fallback_highlights = _build_highlights_from_data(

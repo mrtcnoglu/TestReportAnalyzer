@@ -5,7 +5,7 @@ import json
 import os
 import re
 import textwrap
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from anthropic import Anthropic
 from openai import OpenAI
@@ -57,6 +57,9 @@ class AIAnalyzer:
         self.openai_client = None
         self._claude_client_key = None
         self._openai_client_key = None
+        self._translation_cache: Dict[
+            Tuple[str, str, Tuple[str, ...]], Dict[str, str]
+        ] = {}
         self._refresh_configuration()
 
     def _refresh_configuration(self) -> None:
@@ -324,6 +327,122 @@ Tüm metinleri ilgili dilde üret. JSON dışında açıklama yapma.
 """
 
         return textwrap.dedent(prompt).strip()
+
+    def _create_translation_prompt(
+        self,
+        *,
+        text: str,
+        source_language: str,
+        target_languages: Sequence[str],
+    ) -> str:
+        language_names = {"tr": "Turkish", "en": "English", "de": "German"}
+        source_label = language_names.get(source_language, source_language or "original language")
+        targets_description = ", ".join(
+            f"{language_names.get(lang, lang)} ({lang})" for lang in target_languages
+        )
+        key_list = ", ".join(f'"{lang}"' for lang in target_languages)
+        example_lines: List[str] = []
+        for index, lang in enumerate(target_languages):
+            suffix = "," if index < len(target_languages) - 1 else ""
+            example_lines.append(f'                "{lang}": "..."{suffix}')
+        example_block = "\n".join(example_lines) if example_lines else '                "tr": "..."'
+        template = """
+            Sen teknik test raporları için uzman bir çevirmen olarak görev yapıyorsun.
+            Verilen metin {source_label} dilindedir. Bu metni {targets_description} dillerine çevir.
+            Yanıtını mutlaka geçerli JSON formatında ver ve ek açıklama ekleme.
+            JSON çıktısında yalnızca translations anahtarını ve şu alt anahtarları kullan: {key_list}.
+            Örnek yapı:
+            {{
+              "translations": {{
+{example_block}
+              }}
+            }}
+
+            Çevrilecek metin aşağıda verilmiştir:
+            ---
+            {text}
+            ---
+        """
+        prompt = textwrap.dedent(template).strip().format(
+            source_label=source_label,
+            targets_description=targets_description,
+            key_list=key_list,
+            example_block=example_block,
+            text=text,
+        )
+        return prompt
+
+    def _parse_translation_response(
+        self, payload: Dict, target_languages: Sequence[str]
+    ) -> Dict[str, str]:
+        translations = payload.get("translations") if isinstance(payload, dict) else {}
+        normalised: Dict[str, str] = {}
+        if isinstance(translations, dict):
+            for language in target_languages:
+                value = translations.get(language, "") if language in translations else ""
+                value_str = str(value).strip()
+                if value_str:
+                    normalised[language] = value_str
+        else:
+            for language in target_languages:
+                value = payload.get(language, "") if isinstance(payload, dict) else ""
+                value_str = str(value).strip()
+                if value_str:
+                    normalised[language] = value_str
+        return normalised
+
+    def translate_texts(
+        self,
+        text: str,
+        *,
+        source_language: Optional[str] = None,
+        target_languages: Sequence[str] = (),
+    ) -> Dict[str, str]:
+        cleaned_text = (text or "").strip()
+        if not cleaned_text:
+            return {}
+
+        targets = tuple(sorted({str(lang).strip().lower() for lang in target_languages if str(lang).strip()}))
+        if not targets:
+            return {}
+
+        source_key = (source_language or "").strip().lower()
+        cache_key = (source_key, cleaned_text, targets)
+        if cache_key in self._translation_cache:
+            return dict(self._translation_cache[cache_key])
+
+        self._refresh_configuration()
+        provider = (self.provider or "none").lower()
+        if provider == "none":
+            return {}
+
+        prompt = self._create_translation_prompt(
+            text=cleaned_text, source_language=source_key or "", target_languages=targets
+        )
+        candidates: List[str]
+        if provider == "both":
+            candidates = ["claude", "chatgpt"]
+        else:
+            candidates = [provider]
+
+        max_tokens = min(self.max_tokens * 2, 1200)
+        for candidate in candidates:
+            try:
+                if candidate == "claude":
+                    data = self._request_json_from_claude(prompt, max_tokens=max_tokens)
+                else:
+                    data = self._request_json_from_chatgpt(prompt, max_tokens=max_tokens)
+                if not isinstance(data, dict):
+                    continue
+                translations = self._parse_translation_response(data, targets)
+                if translations:
+                    self._translation_cache[cache_key] = dict(translations)
+                    return translations
+            except Exception as exc:  # pragma: no cover - API hataları kullanıcıya gösterilmez
+                print(f"[AIAnalyzer] {candidate} çeviri isteği başarısız: {exc}")
+                continue
+
+        return {}
 
     def _normalise_summary_response(self, payload: Dict) -> Dict[str, object]:
         """AI yanıtını öngörülen anahtarlara göre düzenle."""
