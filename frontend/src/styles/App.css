@@ -744,26 +744,102 @@ a:hover {
   color: var(--primary-color);
 }
 
-.analysis-structured-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+.analysis-structured-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
   margin: 0.75rem 0;
 }
 
-.analysis-structured-item {
-  background-color: rgba(148, 163, 184, 0.12);
+.analysis-structured-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.analysis-structured-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--info-color);
+}
+
+.analysis-structured-language-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.analysis-structured-language-card {
+  border: 1px solid var(--border-color);
   border-radius: 0.75rem;
+  background-color: rgba(148, 163, 184, 0.12);
   padding: 0.75rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
+  min-height: 100%;
 }
 
-.analysis-structured-item h5 {
+.analysis-structured-language-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.analysis-structured-language-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-color);
+}
+
+.analysis-structured-language-card p {
   margin: 0;
-  font-size: 0.95rem;
-  color: var(--info-color);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.analysis-conditions-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.analysis-conditions-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 0;
+}
+
+.analysis-condition-pair {
+  background-color: rgba(148, 163, 184, 0.12);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.analysis-condition-pair dt {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--primary-color);
+}
+
+.analysis-condition-pair dd {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.9rem;
+  color: var(--text-color);
+}
+
+.analysis-conditions-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  list-style: disc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--text-color);
 }
 
 .analysis-highlights {
