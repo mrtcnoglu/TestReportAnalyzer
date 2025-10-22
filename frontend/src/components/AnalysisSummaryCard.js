@@ -43,8 +43,16 @@ const getStructuredLabel = (sectionKey, languageKey) => {
   return fallback;
 };
 
-const normaliseStructuredValue = (rawValue, languageKey) => {
-  if (!rawValue) {
+const resolveLanguageKey = (key) => {
+  if (!key && key !== 0) {
+    return "";
+  }
+
+  return String(key).trim().toLowerCase();
+};
+
+const resolveLocalizedText = (rawValue, languageKey) => {
+  if (rawValue == null) {
     return "";
   }
 
@@ -54,46 +62,67 @@ const normaliseStructuredValue = (rawValue, languageKey) => {
 
   if (Array.isArray(rawValue)) {
     return rawValue
-      .map((item) => String(item || "").trim())
+      .map((item) => String(item ?? "").trim())
       .filter((entry) => entry.length > 0)
       .join(" ");
   }
 
   if (typeof rawValue === "object") {
-    const direct = rawValue[languageKey];
+    const normalizedLanguageKey = resolveLanguageKey(languageKey);
+    const direct = rawValue[normalizedLanguageKey] ?? rawValue[languageKey];
+
     if (typeof direct === "string") {
       return direct.trim();
     }
+
     if (Array.isArray(direct)) {
       return direct
-        .map((item) => String(item || "").trim())
+        .map((item) => String(item ?? "").trim())
         .filter((entry) => entry.length > 0)
         .join(" ");
     }
 
-    const fallbackValue = Object.values(rawValue).find((value) => {
+    const fallbackValue = Object.entries(rawValue).find(([candidateKey, value]) => {
+      const candidateLanguageKey = resolveLanguageKey(candidateKey);
+      if (!candidateLanguageKey) {
+        return false;
+      }
+
       if (typeof value === "string") {
         return value.trim().length > 0;
       }
+
       if (Array.isArray(value)) {
-        return value.some((item) => String(item || "").trim().length > 0);
+        return value.some((item) => String(item ?? "").trim().length > 0);
       }
+
       return false;
     });
 
-    if (typeof fallbackValue === "string") {
-      return fallbackValue.trim();
-    }
+    if (fallbackValue) {
+      const [, value] = fallbackValue;
+      if (typeof value === "string") {
+        return value.trim();
+      }
 
-    if (Array.isArray(fallbackValue)) {
-      return fallbackValue
-        .map((item) => String(item || "").trim())
-        .filter((entry) => entry.length > 0)
-        .join(" ");
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => String(item ?? "").trim())
+          .filter((entry) => entry.length > 0)
+          .join(" ");
+      }
     }
   }
 
   return String(rawValue).trim();
+};
+
+const normaliseStructuredValue = (rawValue, languageKey) => {
+  if (!rawValue) {
+    return "";
+  }
+
+  return resolveLocalizedText(rawValue, languageKey);
 };
 
 const hasStructuredContent = (rawValue) => {
@@ -155,7 +184,8 @@ const parseConditionEntries = (text) => {
 };
 
 const renderConditionsContent = (value, languageKey) => {
-  const entries = parseConditionEntries(value);
+  const resolvedValue = resolveLocalizedText(value, languageKey);
+  const entries = parseConditionEntries(resolvedValue);
 
   if (!entries.length) {
     return (
@@ -192,7 +222,7 @@ const renderConditionsContent = (value, languageKey) => {
 };
 
 const renderLocalizedParagraph = (value, languageKey, className = "") => {
-  const text = typeof value === "string" ? value.trim() : "";
+  const text = resolveLocalizedText(value, languageKey);
   const classes = className ? [className] : [];
 
   if (text) {
