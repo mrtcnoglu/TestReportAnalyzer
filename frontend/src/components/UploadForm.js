@@ -234,8 +234,8 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
           onChange={handleFileChange}
           hidden
         />
-        <p className="drag-area-title">PDF Raporlarını Sürükleyin &amp; Bırakın veya Tıklayarak Dosya Seçin</p>
-        <p className="drag-area-subtitle">En fazla 2 pdf yükleyebilirsiniz!</p>
+        <p className="drag-area-title">PDF Test Raporlarını Sürükleyip Bırakabilirsiniz</p>
+        <p className="drag-area-subtitle">Aynı anda en fazla 2 pdf yükleyebilirsiniz!</p>
         <button
           type="button"
           className="button button-secondary"

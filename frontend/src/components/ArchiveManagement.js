@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { detectReportType, getReportStatusLabel } from "../utils/reportUtils";
+import AnalysisSummaryCard from "./AnalysisSummaryCard";
 
 const deriveLaboratory = (filename = "", detectedType = "") => {
   const name = filename.toLowerCase();
@@ -39,7 +40,7 @@ const deriveStatusFilterValue = (statusLabel = "") => {
   return "Belirsiz";
 };
 
-const ArchiveManagement = ({ reports, analysisEngine = "chatgpt" }) => {
+const ArchiveManagement = ({ reports, analysisEngine = "chatgpt", analysisArchive = [] }) => {
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
@@ -50,6 +51,7 @@ const ArchiveManagement = ({ reports, analysisEngine = "chatgpt" }) => {
   });
   const [filteredReports, setFilteredReports] = useState([]);
   const [filtersApplied, setFiltersApplied] = useState(false);
+  const [isArchiveCollapsed, setIsArchiveCollapsed] = useState(false);
 
   const enrichedReports = useMemo(
     () =>
@@ -349,6 +351,26 @@ const ArchiveManagement = ({ reports, analysisEngine = "chatgpt" }) => {
           </table>
         )}
       </div>
+      <AnalysisSummaryCard
+        analyses={analysisArchive}
+        title="Analiz Arşivi"
+        introText={
+          analysisArchive.length > 0
+            ? "Önceki AI analiz sonuçları arşivde saklanmaktadır."
+            : "Arşivde gösterilecek analiz bulunmuyor."
+        }
+        emptyMessage="Arşivde gösterilecek analiz bulunmuyor."
+        headerActions={
+          <button
+            type="button"
+            className="button button-ghost analysis-summary-toggle"
+            onClick={() => setIsArchiveCollapsed((prev) => !prev)}
+          >
+            {isArchiveCollapsed ? "Göster" : "Gizle"}
+          </button>
+        }
+        collapsed={isArchiveCollapsed}
+      />
     </div>
   );
 };
