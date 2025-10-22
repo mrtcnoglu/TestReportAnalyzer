@@ -212,11 +212,61 @@ COMPARISON_EMPTY_DETAILS = {
 }
 
 
-def _merge_localized_summaries(fallback: dict, overrides: dict | None) -> dict:
-    merged = {}
+def _merge_localized_summaries(
+    fallback: dict, overrides: dict | None, *, translator=None
+) -> dict:
+    languages = ("tr", "en", "de")
     overrides = overrides if isinstance(overrides, dict) else {}
+    fallback = fallback if isinstance(fallback, dict) else {}
 
-    for language in ("tr", "en", "de"):
+    def _collect_field(field: str) -> tuple[dict[str, str], str, str]:
+        collected: dict[str, str] = {}
+        source_language = ""
+        source_text = ""
+
+        for language in languages:
+            entry = overrides.get(language, {}) if isinstance(overrides, dict) else {}
+            value = str(entry.get(field) or "").strip()
+            if not value:
+                continue
+
+            detected_language = _detect_language(value)
+            target_language = detected_language or language
+            collected[target_language] = value
+
+            if not source_language:
+                source_language = target_language
+                source_text = value
+
+        if not collected:
+            for language in languages:
+                entry = fallback.get(language, {}) if isinstance(fallback, dict) else {}
+                value = str(entry.get(field) or "").strip()
+                if value and language not in collected:
+                    collected[language] = value
+                    if not source_language:
+                        source_language = language
+                        source_text = value
+
+        ensured = (
+            _ensure_multilingual_entries(collected, translator=translator)
+            if collected
+            else {}
+        )
+
+        return ensured, source_language, source_text
+
+    summary_entries, summary_source_lang, summary_source_text = _collect_field("summary")
+    conditions_entries, conditions_source_lang, conditions_source_text = _collect_field(
+        "conditions"
+    )
+    improvements_entries, improvements_source_lang, improvements_source_text = _collect_field(
+        "improvements"
+    )
+
+    merged: dict[str, dict[str, str]] = {}
+
+    for language in languages:
         default_entry = fallback.get(language, {}) if isinstance(fallback, dict) else {}
         override_entry = overrides.get(language, {}) if isinstance(overrides, dict) else {}
 
@@ -229,10 +279,49 @@ def _merge_localized_summaries(fallback: dict, overrides: dict | None) -> dict:
                     if value_str:
                         labels[key] = value_str
 
+        fallback_summary = str(default_entry.get("summary") or "").strip()
+        summary_text = str(summary_entries.get(language, "")).strip()
+        if not summary_text and fallback_summary:
+            summary_text = fallback_summary
+        elif (
+            summary_source_lang
+            and language != summary_source_lang
+            and summary_text == summary_source_text
+            and fallback_summary
+            and fallback_summary != summary_source_text
+        ):
+            summary_text = fallback_summary
+
+        fallback_conditions = str(default_entry.get("conditions") or "").strip()
+        conditions_text = str(conditions_entries.get(language, "")).strip()
+        if not conditions_text and fallback_conditions:
+            conditions_text = fallback_conditions
+        elif (
+            conditions_source_lang
+            and language != conditions_source_lang
+            and conditions_text == conditions_source_text
+            and fallback_conditions
+            and fallback_conditions != conditions_source_text
+        ):
+            conditions_text = fallback_conditions
+
+        fallback_improvements = str(default_entry.get("improvements") or "").strip()
+        improvements_text = str(improvements_entries.get(language, "")).strip()
+        if not improvements_text and fallback_improvements:
+            improvements_text = fallback_improvements
+        elif (
+            improvements_source_lang
+            and language != improvements_source_lang
+            and improvements_text == improvements_source_text
+            and fallback_improvements
+            and fallback_improvements != improvements_source_text
+        ):
+            improvements_text = fallback_improvements
+
         merged[language] = {
-            "summary": (override_entry.get("summary") or default_entry.get("summary") or "").strip(),
-            "conditions": (override_entry.get("conditions") or default_entry.get("conditions") or "").strip(),
-            "improvements": (override_entry.get("improvements") or default_entry.get("improvements") or "").strip(),
+            "summary": summary_text,
+            "conditions": conditions_text,
+            "improvements": improvements_text,
             "labels": labels,
         }
 
@@ -1179,7 +1268,9 @@ def analyze_files_with_ai():
         )
 
         localized_summaries = _merge_localized_summaries(
-            fallback_localized, (ai_summary_payload or {}).get("localized_summaries") if ai_summary_payload else None
+            fallback_localized,
+            (ai_summary_payload or {}).get("localized_summaries") if ai_summary_payload else None,
+            translator=ai_analyzer,
         )
 
         fallback_sections = _build_structured_sections_from_text(
