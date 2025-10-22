@@ -239,11 +239,100 @@ def _merge_localized_summaries(fallback: dict, overrides: dict | None) -> dict:
     return merged
 
 
+_LANGUAGE_DIACRITIC_HINTS = {
+    "tr": "çğıöşüâîûı",
+    "de": "äöüß",
+}
+
+_LANGUAGE_KEYWORD_HINTS = {
+    "tr": (
+        " koşul",
+        " değerlendirme",
+        " uzman",
+        " rapor",
+        " başar",
+        " ölçüm",
+        " cihaz",
+        " sonuç",
+    ),
+    "de": (
+        " der ",
+        " die ",
+        " und ",
+        " wurde ",
+        " mit ",
+        " kamer",
+        " aufzeich",
+        "prüfung",
+        " messung",
+        " gerät",
+        " fehler",
+        " erfolg",
+    ),
+    "en": (
+        " the ",
+        " and ",
+        " with ",
+        " recorded",
+        " camera",
+        " failure",
+        " success",
+        " analysis",
+        " conditions",
+        " results",
+        " notes",
+        " note ",
+    ),
+}
+
+
+def _detect_language(text: str) -> str | None:
+    if not text:
+        return None
+
+    lowered = text.lower()
+    normalized = re.sub(r"[^a-z0-9äöüßçğıöşüâîûı]+", " ", lowered).strip()
+    padded = f" {normalized} " if normalized else ""
+    scores: dict[str, int] = {"tr": 0, "en": 0, "de": 0}
+
+    for language, characters in _LANGUAGE_DIACRITIC_HINTS.items():
+        diacritic_score = sum(lowered.count(char) for char in characters)
+        if diacritic_score:
+            scores[language] += diacritic_score * 3
+
+    for language, keywords in _LANGUAGE_KEYWORD_HINTS.items():
+        for keyword in keywords:
+            target = keyword.strip()
+            if not target:
+                continue
+
+            if keyword.startswith(" ") or keyword.endswith(" "):
+                haystack = padded
+                needle = f" {target} "
+                if haystack and needle in haystack:
+                    scores[language] += 2 if len(target) > 3 else 1
+            else:
+                if target in normalized:
+                    scores[language] += 2 if len(target) > 3 else 1
+
+    best_language, best_score = max(scores.items(), key=lambda item: item[1])
+    if best_score <= 0:
+        return None
+
+    if sum(1 for score in scores.values() if score == best_score) > 1:
+        return None
+
+    return best_language
+
+
 def _wrap_multilingual_text(text: str) -> dict[str, str]:
     cleaned = (text or "").strip()
     if not cleaned:
         return {}
-    return {"tr": cleaned, "en": cleaned, "de": cleaned}
+    detected_language = _detect_language(cleaned)
+    if detected_language:
+        return {detected_language: cleaned}
+    return {"en": cleaned}
 
 
 def _normalize_structured_section_value(value: object) -> dict[str, str]:

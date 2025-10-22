@@ -82,36 +82,7 @@ const resolveLocalizedText = (rawValue, languageKey) => {
         .join(" ");
     }
 
-    const fallbackValue = Object.entries(rawValue).find(([candidateKey, value]) => {
-      const candidateLanguageKey = resolveLanguageKey(candidateKey);
-      if (!candidateLanguageKey) {
-        return false;
-      }
-
-      if (typeof value === "string") {
-        return value.trim().length > 0;
-      }
-
-      if (Array.isArray(value)) {
-        return value.some((item) => String(item ?? "").trim().length > 0);
-      }
-
-      return false;
-    });
-
-    if (fallbackValue) {
-      const [, value] = fallbackValue;
-      if (typeof value === "string") {
-        return value.trim();
-      }
-
-      if (Array.isArray(value)) {
-        return value
-          .map((item) => String(item ?? "").trim())
-          .filter((entry) => entry.length > 0)
-          .join(" ");
-      }
-    }
+    return "";
   }
 
   return String(rawValue).trim();
