@@ -13,6 +13,7 @@ from werkzeug.utils import secure_filename
 try:  # pragma: no cover - import flexibility
     from . import database
     from .ai_analyzer import ai_analyzer
+    from .translation_utils import fallback_translate_text
     from .pdf_analyzer import (
         REPORT_TYPE_LABELS,
         extract_text_from_pdf,
@@ -22,6 +23,7 @@ try:  # pragma: no cover - import flexibility
 except ImportError:  # pragma: no cover
     import database  # type: ignore
     from ai_analyzer import ai_analyzer  # type: ignore
+    from translation_utils import fallback_translate_text  # type: ignore
     from pdf_analyzer import (  # type: ignore
         REPORT_TYPE_LABELS,
         extract_text_from_pdf,
@@ -376,6 +378,10 @@ def _ensure_multilingual_entries(
 
     for language in missing:
         translated = (translations.get(language) or "").strip() if translations else ""
+        if not translated and source_text:
+            translated = fallback_translate_text(
+                source_text, source_language=source_language, target_language=language
+            )
         if not translated:
             translated = source_text
         normalised[language] = translated
