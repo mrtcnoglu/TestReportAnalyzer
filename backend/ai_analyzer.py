@@ -5,13 +5,14 @@ import json
 import os
 import re
 import textwrap
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from anthropic import Anthropic
 from openai import OpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
 
 DEFAULT_SUMMARY_LABELS: Dict[str, Dict[str, str]] = {
@@ -49,10 +50,10 @@ class AIAnalyzer:
         self.provider = "none"
         self.anthropic_key = ""
         self.openai_key = ""
-        self.claude_model = "claude-sonnet-4-5-20250929"
+        self.claude_model = "claude-3-5-sonnet-20240620"
         self.openai_model = "gpt-4o-mini"
-        self.max_tokens = 500
-        self.timeout = 30
+        self.max_tokens = 1200
+        self.timeout = 60
         self.claude_client = None
         self.openai_client = None
         self._claude_client_key = None
@@ -70,18 +71,28 @@ class AIAnalyzer:
         self.provider = provider_value
         self.anthropic_key = (os.getenv("ANTHROPIC_API_KEY", "") or "").strip()
         self.openai_key = (os.getenv("OPENAI_API_KEY", "") or "").strip()
-        self.claude_model = os.getenv("AI_MODEL_CLAUDE", self.claude_model)
-        self.openai_model = os.getenv("AI_MODEL_OPENAI", self.openai_model)
+        claude_model = os.getenv("AI_ANTHROPIC_MODEL") or os.getenv(
+            "AI_MODEL_CLAUDE", self.claude_model
+        )
+        openai_model = os.getenv("AI_OPENAI_MODEL") or os.getenv(
+            "AI_MODEL_OPENAI", self.openai_model
+        )
+        self.claude_model = claude_model or self.claude_model
+        self.openai_model = openai_model or self.openai_model
 
         try:
             self.max_tokens = int(os.getenv("AI_MAX_TOKENS", str(self.max_tokens)) or self.max_tokens)
         except ValueError:
-            self.max_tokens = 500
+            self.max_tokens = 1200
 
         try:
-            self.timeout = int(os.getenv("AI_TIMEOUT", str(self.timeout)) or self.timeout)
+            self.timeout = int(
+                os.getenv("AI_TIMEOUT_S")
+                or os.getenv("AI_TIMEOUT")
+                or str(self.timeout)
+            )
         except ValueError:
-            self.timeout = 30
+            self.timeout = 60
 
         if self.anthropic_key:
             if self.anthropic_key != self._claude_client_key:

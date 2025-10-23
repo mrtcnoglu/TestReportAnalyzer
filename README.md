@@ -139,6 +139,26 @@ Backend\.env dosyasında `AI_PROVIDER` değişkeni:
 - **`chatgpt`**: Sadece ChatGPT kullan (daha ucuz)
 - **`both`**: Önce Claude dene, başarısız olursa ChatGPT kullan
 
+### backend/.env örneği
+
+```ini
+AI_PROVIDER=chatgpt
+OPENAI_API_KEY=sk-xxx
+ANTHROPIC_API_KEY=sk-ant-xxx
+AI_OPENAI_MODEL=gpt-4o-mini
+AI_ANTHROPIC_MODEL=claude-3-5-sonnet-20240620
+AI_MAX_TOKENS=1200
+AI_TIMEOUT_S=60
+```
+
+> ⚠️ Bu dosya **depo dışında** tutulmalı; `.gitignore` üzerinden Git'e eklenmez.
+
+### Sağlık ve API uçları
+
+- `GET /api/health/ai` → Yapılandırmanın durumu (`has_openai`, `has_claude`, seçili modeller vb.).
+- `POST /api/ai/analyze` → Gövde `{ "text": "..." }` ile AI özetini döndürür.
+- `check-ai.ps1` → Yukarıdaki health endpoint'ini çağırarak sonucu JSON olarak yazar.
+
 ### Maliyet
 
 - **Claude (Sonnet)**: ~$0.003 per analiz (~100 analiz = $0.30)

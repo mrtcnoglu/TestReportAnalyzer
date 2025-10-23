@@ -10,9 +10,11 @@ from flask_cors import CORS
 try:  # pragma: no cover - import resolution for script execution
     from .database import init_db
     from .routes import reports_bp
+    from .routes.ai import bp as ai_bp
 except ImportError:  # pragma: no cover
     from database import init_db  # type: ignore
     from routes import reports_bp  # type: ignore
+    from routes.ai import bp as ai_bp  # type: ignore
 
 
 def _resolve_host(default: str = "0.0.0.0") -> str:
@@ -58,6 +60,7 @@ def create_app() -> Flask:
 
     init_db()
     app.register_blueprint(reports_bp, url_prefix="/api")
+    app.register_blueprint(ai_bp)
     return app
 
 
