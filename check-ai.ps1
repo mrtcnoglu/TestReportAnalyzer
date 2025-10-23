@@ -90,6 +90,10 @@ with app.test_client() as client:
     }
     finally {
       $env:PYTHONPATH = $originalPythonPath
+    }
+  }
+  finally {
+    if ($null -ne $tempFile -and (Test-Path -LiteralPath $tempFile.FullName)) {
       Remove-Item -LiteralPath $tempFile.FullName -ErrorAction SilentlyContinue
     }
   }
