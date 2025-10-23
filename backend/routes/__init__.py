@@ -11,10 +11,10 @@ from flask import Blueprint, current_app, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
 try:  # pragma: no cover - import flexibility
-    from . import database
-    from .ai_analyzer import ai_analyzer
-    from .translation_utils import fallback_translate_text
-    from .pdf_analyzer import (
+    from .. import database
+    from ..ai_analyzer import ai_analyzer
+    from ..translation_utils import fallback_translate_text
+    from ..pdf_analyzer import (
         REPORT_TYPE_LABELS,
         extract_text_from_pdf,
         infer_report_type,
