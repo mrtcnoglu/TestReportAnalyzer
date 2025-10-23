@@ -6,7 +6,15 @@ from typing import Any, Dict
 
 from openai import OpenAI
 
-from .config import AI_MAX_TOKENS, AI_OPENAI_MODEL, AI_TIMEOUT_S, OPENAI_API_KEY
+try:  # pragma: no cover - allow running without package context
+    from .config import AI_MAX_TOKENS, AI_OPENAI_MODEL, AI_TIMEOUT_S, OPENAI_API_KEY
+except ImportError:  # pragma: no cover
+    from config import (  # type: ignore
+        AI_MAX_TOKENS,
+        AI_OPENAI_MODEL,
+        AI_TIMEOUT_S,
+        OPENAI_API_KEY,
+    )
 
 _client: OpenAI | None = None
 
