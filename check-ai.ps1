@@ -19,20 +19,27 @@ function Invoke-HealthCheckLocal {
         return $resp
     }
     catch {
-        $msg = $_.Exception.Message
+        $exception = $_.Exception
+        $msg = $exception.Message
         $detail = $null
+        $hint = $null
         try {
-            $webEx = $_.Exception
+            $webEx = $exception
             if ($webEx.Response -and $webEx.Response.GetResponseStream) {
                 $reader = New-Object System.IO.StreamReader($webEx.Response.GetResponseStream())
                 $detail = $reader.ReadToEnd()
             }
         } catch {}
+
+        if ($msg -match 'actively refused' -or $msg -match 'ECONNREFUSED' -or $msg -match 'connection refused') {
+            $hint = "Backend servisi çalışmıyor. Önce start-backend.ps1 veya start-app.ps1 komutunu çalıştırın."
+        }
         return [pscustomobject]@{
             ok     = $false
             error  = $msg
             detail = $detail
             url    = $Url
+            hint   = $hint
         }
     }
 }
