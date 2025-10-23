@@ -69,21 +69,30 @@ with app.test_client() as client:
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($tempFile.FullName, $scriptContent, $utf8NoBom)
 
-    Push-Location $RepoRoot
+    $originalPythonPath = $env:PYTHONPATH
     try {
-      & $pythonExe $tempFile.FullName
-      if ($LASTEXITCODE -ne 0) {
-        throw "Yerel Flask sağlık kontrolü başarısız oldu (exit code: $LASTEXITCODE)."
+      if ([string]::IsNullOrWhiteSpace($originalPythonPath)) {
+        $env:PYTHONPATH = $RepoRoot
+      } else {
+        $env:PYTHONPATH = "${RepoRoot}$([IO.Path]::PathSeparator)$originalPythonPath"
+      }
+
+      Push-Location $RepoRoot
+      try {
+        & $pythonExe $tempFile.FullName
+        if ($LASTEXITCODE -ne 0) {
+          throw "Yerel Flask sağlık kontrolü başarısız oldu (exit code: $LASTEXITCODE)."
+        }
+      }
+      finally {
+        Pop-Location
       }
     }
     finally {
-      Pop-Location
+      $env:PYTHONPATH = $originalPythonPath
+      Remove-Item -LiteralPath $tempFile.FullName -ErrorAction SilentlyContinue
     }
   }
-  finally {
-    Remove-Item -LiteralPath $tempFile.FullName -ErrorAction SilentlyContinue
-  }
-}
 
 $url = "$BaseUrl/api/health/ai"
 

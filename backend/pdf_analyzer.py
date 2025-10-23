@@ -10,7 +10,10 @@ from typing import Dict, List, Tuple
 import pdfplumber
 from PyPDF2 import PdfReader
 
-from ai_analyzer import ai_analyzer
+try:  # pragma: no cover - allow execution both as package and script
+    from .ai_analyzer import ai_analyzer
+except ImportError:  # pragma: no cover
+    from ai_analyzer import ai_analyzer  # type: ignore
 
 
 REPORT_TYPE_LABELS = {
