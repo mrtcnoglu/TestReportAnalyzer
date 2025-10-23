@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from ..ai_providers import analyze_with_ai
-from ..config import AI_PROVIDER, ai_config_status
+try:  # pragma: no cover - allow running as both module and script
+    from ..ai_providers import analyze_with_ai
+    from ..config import AI_PROVIDER, ai_config_status
+except ImportError:  # pragma: no cover
+    from ai_providers import analyze_with_ai  # type: ignore
+    from config import AI_PROVIDER, ai_config_status  # type: ignore
 
 bp = Blueprint("ai_routes", __name__, url_prefix="/api")
 
