@@ -6,12 +6,20 @@ from typing import Any, Dict
 
 from anthropic import Anthropic
 
-from .config import (
-    AI_ANTHROPIC_MODEL,
-    AI_MAX_TOKENS,
-    AI_TIMEOUT_S,
-    ANTHROPIC_API_KEY,
-)
+try:  # pragma: no cover - allow script execution
+    from .config import (
+        AI_ANTHROPIC_MODEL,
+        AI_MAX_TOKENS,
+        AI_TIMEOUT_S,
+        ANTHROPIC_API_KEY,
+    )
+except ImportError:  # pragma: no cover
+    from config import (  # type: ignore
+        AI_ANTHROPIC_MODEL,
+        AI_MAX_TOKENS,
+        AI_TIMEOUT_S,
+        ANTHROPIC_API_KEY,
+    )
 
 _client: Anthropic | None = None
 

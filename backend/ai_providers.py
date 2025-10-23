@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from .claude_client import analyze_with_claude
-from .config import AI_PROVIDER, ANTHROPIC_API_KEY, OPENAI_API_KEY
-from .openai_client import analyze_with_openai
+try:  # pragma: no cover - support execution without package context
+    from .claude_client import analyze_with_claude
+    from .config import AI_PROVIDER, ANTHROPIC_API_KEY, OPENAI_API_KEY
+    from .openai_client import analyze_with_openai
+except ImportError:  # pragma: no cover
+    from claude_client import analyze_with_claude  # type: ignore
+    from config import AI_PROVIDER, ANTHROPIC_API_KEY, OPENAI_API_KEY  # type: ignore
+    from openai_client import analyze_with_openai  # type: ignore
 
 
 def analyze_with_ai(text: str) -> Dict[str, Any]:
