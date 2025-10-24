@@ -512,21 +512,17 @@ a:hover {
   font-weight: 500;
 }
 
-  .reset-card,
   .analysis-summary-card {
-    max-width: 680px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .analysis-summary-card {
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    text-align: left;
   }
 
   .reset-card {
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
     text-align: center;
   }
 
@@ -540,18 +536,27 @@ a:hover {
 
   .analysis-summary-card-header {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
+    justify-content: center;
+    gap: 0.75rem;
+    text-align: center;
   }
 
   .analysis-summary-card-header h3 {
     margin: 0;
+    width: 100%;
+    text-align: center;
   }
 
   .analysis-summary-card-actions {
     display: flex;
     align-items: center;
+    gap: 0.5rem;
+  }
+
+  .analysis-summary-card > p {
+    text-align: center;
   }
 
   .analysis-summary-toggle {
