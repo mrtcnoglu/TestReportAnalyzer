@@ -48,3 +48,39 @@ Response:
 # Uygulamayı başlat
 python app.py
 ```
+
+## Debug Araçları
+
+### PDF İçeriğini Kontrol Et
+```powershell
+.\check-pdf.ps1
+# veya
+python test_pdf_debug.py uploads/report.pdf
+```
+
+### Parser Testi
+```powershell
+python test_parser.py
+```
+
+### Log Seviyeleri
+.env dosyasına ekle:
+```
+LOG_LEVEL=DEBUG
+```
+
+## Desteklenen Test Formatları
+
+### İngilizce
+- PASS, PASSED, SUCCESS, OK, ✓
+- FAIL, FAILED, ERROR, EXCEPTION, ✗
+
+### Türkçe
+- Başarılı, Geçti, Basarili, Gecti
+- Başarısız, Kaldı, Hata, Basarisiz, Kaldi
+
+### Test İsmi Tanıma
+- "Test: Adı"
+- "test_ismi"
+- "TEST - Adı"
+- "Senaryo: Adı"

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import difflib
 import re
 from pathlib import Path
@@ -30,6 +31,8 @@ except ImportError:  # pragma: no cover
         infer_report_type,
         parse_test_results,
     )
+
+logger = logging.getLogger(__name__)
 
 reports_bp = Blueprint("reports", __name__)
 
@@ -899,8 +902,14 @@ def upload_report():
     file.save(saved_path)
 
     try:
+        logger.info(f"PDF parse ediliyor: {filename}")
         text = extract_text_from_pdf(saved_path)
+        logger.info(f"Çıkarılan text uzunluğu: {len(text)} karakter")
         parsed_results = parse_test_results(text)
+        logger.info(f"Bulunan test sayısı: {len(parsed_results)}")
+        if len(parsed_results) == 0:
+            logger.warning(f"UYARI: PDF'de hiç test bulunamadı! Dosya: {filename}")
+            logger.debug(f"İlk 500 karakter: {text[:500]}")
         report_type_key, report_type_label = infer_report_type(text, filename)
     except Exception as exc:  # pragma: no cover - defensive
         saved_path.unlink(missing_ok=True)

@@ -419,3 +419,74 @@ TestReportAnalyzer/
 
 ## Lisans
 Bu proje [MIT Lisansı](LICENSE) ile lisanslanmıştır.
+
+## Sorun Giderme
+
+### Problem: PDF yüklendi ama "test bulunamadı" hatası
+
+**Neden:** PDF formatı sistem tarafından tanınmıyor olabilir.
+
+**Çözüm Adımları:**
+
+1. **PDF içeriğini kontrol et:**
+```powershell
+cd backend
+.\check-pdf.ps1
+# veya spesifik dosya için:
+.\check-pdf.ps1 uploads\rapor.pdf
+```
+
+2. **Çıktıyı incele:**
+   - "ANAHTAR KELİME ANALİZİ" bölümüne bak
+   - Pass/Fail kelimeleri tespit ediliyor mu?
+   - Tablo var mı, yoksa düz metin mi?
+
+3. **Desteklenen Formatlar:**
+
+**✅ Desteklenen:**
+```
+Test 1: Login
+Durum: Başarılı
+
+Test 2: Checkout
+Durum: Başarısız
+Hata: Timeout
+```
+
+**✅ Desteklenen (Tablo):**
+```
+Test Adı     | Sonuç      | Açıklama
+Login Test   | Başarılı   | OK
+API Test     | Başarısız  | Timeout
+```
+
+**❌ Desteklenmeyen:**
+- Grafik/resim içinde gömülü test sonuçları
+- Excel tabloları (PDF'e çevrilmeli)
+- Çok karmaşık multi-column layout
+
+4. **Özel Format Desteği:**
+
+PDF'iniz farklı bir format kullanıyorsa, `backend/pdf_analyzer.py` dosyasındaki pattern'leri genişletmeniz gerekebilir.
+
+### Problem: Türkçe karakterler bozuk görünüyor
+
+**Çözüm:** Tüm dosyaların UTF-8 encoding ile kaydedildiğinden emin olun:
+```powershell
+# PowerShell'de:
+$PSDefaultParameterValues['*:Encoding'] = 'utf8'
+```
+
+### Problem: Test sayısı 0 ama PDF'de testler var
+
+**Debug:**
+```powershell
+cd backend
+.\venv\Scripts\Activate.ps1
+python test_parser.py
+```
+
+Eğer test parser çalışmıyorsa:
+1. Pattern'leri kontrol et (pdf_analyzer.py)
+2. PDF text extraction kontrolü yap (test_pdf_debug.py)
+3. Log dosyalarına bak (backend çalışırken console output)
