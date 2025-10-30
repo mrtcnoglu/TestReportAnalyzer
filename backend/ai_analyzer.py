@@ -677,7 +677,7 @@ Tüm metinleri ilgili dilde üret. JSON dışında açıklama yapma.
 
         return None
 
-def _rule_based_analysis(self, error_message: str) -> Dict[str, str]:
+    def _rule_based_analysis(self, error_message: str) -> Dict[str, str]:
         """Basit kural tabanlı analizle fallback sonucu döndür."""
         message = (error_message or "").lower()
 
