@@ -9,9 +9,25 @@ import pdfplumber
 from PyPDF2 import PdfReader
 
 try:  # pragma: no cover - allow execution both as package and script
-    from .ai_analyzer import ai_analyzer
+    from .ai_analyzer import (
+        ai_analyzer,
+        analyze_detailed_data,
+        analyze_graphs,
+        analyze_results,
+        analyze_test_conditions,
+        generate_comprehensive_report,
+    )
+    from .pdf_section_analyzer import detect_sections, identify_section_language
 except ImportError:  # pragma: no cover
-    from ai_analyzer import ai_analyzer  # type: ignore
+    from ai_analyzer import (  # type: ignore
+        ai_analyzer,
+        analyze_detailed_data,
+        analyze_graphs,
+        analyze_results,
+        analyze_test_conditions,
+        generate_comprehensive_report,
+    )
+    from pdf_section_analyzer import detect_sections, identify_section_language  # type: ignore
 
 PASS_PATTERN = r"(PASS|PASSED|SUCCESS|OK|✓|SUCCESSFUL|Başarılı|Geçti|BAŞARILI|GEÇTİ|Basarili|Gecti)"
 FAIL_PATTERN = r"(FAIL|FAILED|ERROR|EXCEPTION|✗|FAILURE|Başarısız|Kaldı|Hata|BAŞARISIZ|KALDI|HATA|Basarisiz|Kaldi)"
@@ -398,6 +414,53 @@ def parse_test_results(text: str) -> List[Dict[str, str]]:
         results = _parse_table_format(text)
 
     return results
+
+
+def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
+    """Run a comprehensive analysis for a PDF by examining its sections individually."""
+
+    text = extract_text_from_pdf(pdf_path)
+    basic_results = parse_test_results(text)
+
+    sections = detect_sections(text)
+    language = identify_section_language(text)
+
+    section_analyses = {
+        "summary": sections.get("summary", ""),
+        "test_conditions": analyze_test_conditions(sections.get("test_conditions", ""), language=language),
+        "graphs": analyze_graphs(sections.get("graphs", ""), language=language),
+        "results": analyze_results(sections.get("results", ""), language=language),
+        "detailed_data": analyze_detailed_data(sections.get("detailed_data", ""), language=language),
+    }
+
+    comprehensive_report = generate_comprehensive_report(
+        section_analyses,
+        language=language,
+        header=sections.get("header", ""),
+    )
+
+    total_tests = len(basic_results)
+    passed_tests = sum(1 for result in basic_results if result.get("status") == "PASS")
+    failed_tests = sum(1 for result in basic_results if result.get("status") == "FAIL")
+
+    metadata = {
+        "analysis_language": language,
+        "text_length": len(text),
+    }
+
+    return {
+        "basic_stats": {
+            "total_tests": total_tests,
+            "passed": passed_tests,
+            "failed": failed_tests,
+            "tests": basic_results,
+        },
+        "sections": sections,
+        "section_analyses": section_analyses,
+        "comprehensive_analysis": comprehensive_report,
+        "metadata": metadata,
+        "raw_text": text,
+    }
 
 
 def _parse_table_format(text: str) -> List[Dict[str, str]]:

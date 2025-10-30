@@ -37,19 +37,57 @@ def init_db() -> None:
             conn.execute("ALTER TABLE reports ADD COLUMN test_type TEXT DEFAULT 'unknown'")
         except sqlite3.OperationalError:
             pass
+        for column, definition in (
+            ("test_conditions_summary", "TEXT"),
+            ("graphs_description", "TEXT"),
+            ("detailed_results", "TEXT"),
+            ("improvement_suggestions", "TEXT"),
+            ("analysis_language", "TEXT DEFAULT 'tr'"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE reports ADD COLUMN {column} {definition}")
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
 
 
-def insert_report(filename: str, pdf_path: str, test_type: str = "unknown") -> int:
+def insert_report(
+    filename: str,
+    pdf_path: str,
+    test_type: str = "unknown",
+    comprehensive_analysis: Optional[Dict[str, str]] = None,
+) -> int:
     """Insert a new report record and return its ID."""
     normalized_type = (test_type or "unknown").strip().lower()
     with closing(_connect()) as conn:
+        columns = ["filename", "pdf_path", "test_type"]
+        values: List[object] = [filename, pdf_path, normalized_type]
+
+        if comprehensive_analysis:
+            columns.extend(
+                [
+                    "test_conditions_summary",
+                    "graphs_description",
+                    "detailed_results",
+                    "improvement_suggestions",
+                    "analysis_language",
+                ]
+            )
+            values.extend(
+                [
+                    comprehensive_analysis.get("test_conditions"),
+                    comprehensive_analysis.get("graphs"),
+                    comprehensive_analysis.get("results"),
+                    comprehensive_analysis.get("improvements"),
+                    comprehensive_analysis.get("analysis_language"),
+                ]
+            )
+
+        placeholders = ", ".join(["?"] * len(columns))
+        column_sql = ", ".join(columns)
         cursor = conn.execute(
-            """
-            INSERT INTO reports (filename, pdf_path, test_type)
-            VALUES (?, ?, ?)
-            """,
-            (filename, pdf_path, normalized_type),
+            f"INSERT INTO reports ({column_sql}) VALUES ({placeholders})",
+            values,
         )
         conn.commit()
         return int(cursor.lastrowid)
@@ -126,7 +164,20 @@ def get_report_by_id(report_id: int) -> Optional[Dict]:
     with closing(_connect()) as conn:
         cursor = conn.execute(
             """
-            SELECT id, filename, upload_date, total_tests, passed_tests, failed_tests, pdf_path, test_type
+            SELECT
+                id,
+                filename,
+                upload_date,
+                total_tests,
+                passed_tests,
+                failed_tests,
+                pdf_path,
+                test_type,
+                test_conditions_summary,
+                graphs_description,
+                detailed_results,
+                improvement_suggestions,
+                analysis_language
             FROM reports
             WHERE id = ?
             """,
@@ -134,6 +185,36 @@ def get_report_by_id(report_id: int) -> Optional[Dict]:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+
+
+def update_report_comprehensive_analysis(report_id: int, analysis: Dict[str, str]) -> None:
+    """Persist comprehensive analysis columns for a report."""
+
+    if not analysis:
+        return
+
+    with closing(_connect()) as conn:
+        conn.execute(
+            """
+            UPDATE reports
+            SET
+                test_conditions_summary = ?,
+                graphs_description = ?,
+                detailed_results = ?,
+                improvement_suggestions = ?,
+                analysis_language = COALESCE(?, analysis_language)
+            WHERE id = ?
+            """,
+            (
+                analysis.get("test_conditions"),
+                analysis.get("graphs"),
+                analysis.get("results"),
+                analysis.get("improvements"),
+                analysis.get("analysis_language"),
+                report_id,
+            ),
+        )
+        conn.commit()
 
 
 def get_failed_tests(report_id: int) -> List[Dict]:
