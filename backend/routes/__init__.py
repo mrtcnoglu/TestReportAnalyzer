@@ -975,6 +975,20 @@ def upload_report():
         )
 
     comprehensive_analysis = analysis_result.get("comprehensive_analysis", {})
+    logger.info("Kapsamlı analiz database'e kaydediliyor...")
+    logger.info(
+        "  Test Koşulları: %s karakter",
+        len((comprehensive_analysis.get("test_conditions") or "")),
+    )
+    logger.info(
+        "  Grafikler: %s karakter",
+        len((comprehensive_analysis.get("graphs") or "")),
+    )
+    logger.info(
+        "  Sonuçlar: %s karakter",
+        len((comprehensive_analysis.get("results") or "")),
+    )
+
     report_id = database.insert_report(
         filename,
         str(saved_path),
@@ -1004,6 +1018,7 @@ def upload_report():
         structured_data=analysis_result.get("structured_data"),
         tables=analysis_result.get("tables"),
     )
+    logger.info("Database kayıt tamamlandı")
 
     report = database.get_report_by_id(report_id)
     if report is not None:

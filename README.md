@@ -572,3 +572,98 @@ Eğer test parser çalışmıyorsa:
 1. Pattern'leri kontrol et (pdf_analyzer.py)
 2. PDF text extraction kontrolü yap (test_pdf_debug.py)
 3. Log dosyalarına bak (backend çalışırken console output)
+
+## Sorun Giderme: Analiz Boş Geliyor
+
+### Problem: Test Koşulları ve Grafikler boş
+
+**Teşhis adımları:**
+
+1. **Backend log'larını kontrol et:**
+```powershell
+# Backend çalışırken console'u izle
+# "KAPSAMLI PDF ANALİZİ" log'larını ara
+```
+
+2. **Manuel test:**
+```powershell
+cd backend
+.\venv\Scripts\Activate.ps1
+python test_full_analysis.py uploads/dosya.pdf
+```
+
+**Beklenen çıktı:**
+```
+✓ Test koşulları OK (200+ karakter)
+✓ Grafik analizi OK (150+ karakter)
+```
+
+3. **AI çalışıyor mu kontrol:**
+```powershell
+.\check-ai.ps1
+# "ok": true görmeli
+```
+
+4. **Bölüm tanıma çalışıyor mu:**
+Backend log'larında şunu ara:
+```
+ADIM 3: Bölüm Tanıma
+  ✓ Tespit edilen bölüm sayısı: 3+
+```
+
+Eğer "0" ise: PDF formatı tanınmıyor.
+
+### Çözümler:
+
+**Durum 1: Bölüm sayısı 0**
+→ PDF formatı beklenenden farklı
+→ `pdf_section_analyzer.py` pattern'lerini genişlet
+
+**Durum 2: AI yanıt vermiyor**
+→ API key kontrol et: `.\check-ai.ps1`
+→ .env dosyasında doğru key var mı?
+
+**Durum 3: Backend hata veriyor**
+→ Console'daki stack trace'i incele
+→ Module eksik mi? `pip install -r requirements.txt`
+
+ÖZET CHECKLIST
+Backend:
+
+ pdf_analyzer.py - Detaylı log ekle
+ pdf_section_analyzer.py - detect_sections güçlendir
+ ai_analyzer.py - analyze_test_conditions düzelt
+ ai_analyzer.py - analyze_graphs düzelt
+ ai_analyzer.py - _call_claude_for_analysis ekle
+ ai_analyzer.py - _call_openai_for_analysis ekle
+ ai_analyzer.py - _extract_basic_info ekle
+ ai_analyzer.py - _extract_graph_info ekle
+ routes.py - Database kayıt log ekle
+ test_full_analysis.py - Test scripti ekle
+
+Frontend:
+
+ ReportDetail.js - Debug bilgisi ekle
+ ReportDetail.js - Console.log ekle
+
+Dokümantasyon:
+
+ README.md - Troubleshooting bölümü
+
+Test:
+```powershell
+# 1. Full analysis test
+cd backend
+python test_full_analysis.py
+
+# 2. Backend başlat (log'ları izle)
+python app.py
+
+# 3. Frontend'den PDF yükle
+
+# 4. Console'da şunları ara:
+# - "ADIM 3: Bölüm Tanıma" → Sayı > 0 olmalı
+# - "ADIM 6: AI Analizi" → Hata olmamalı
+# - "Test koşulları analiz edildi" → Karakter sayısı > 100
+# - "Grafikler analiz edildi" → Karakter sayısı > 100
+```

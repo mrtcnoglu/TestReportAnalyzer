@@ -2,6 +2,7 @@
 """Utilities for detecting structured sections inside PDF report text."""
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
@@ -149,64 +150,83 @@ def identify_section_language(text: str | dict) -> str:
 def detect_sections(text: str | dict) -> Dict[str, str]:
     """Detect major sections of a PDF report and return their contents."""
 
+    logger = logging.getLogger(__name__)
     text = _ensure_text_string(text)
-    sections = {
-        "header": "",
-        "summary": "",
-        "test_conditions": "",
-        "graphs": "",
-        "results": "",
-        "detailed_data": "",
-    }
 
     if not text:
-        return sections
+        logger.warning("detect_sections: Boş text!")
+        return {}
 
-    markers = _iter_section_markers(text)
-    if not markers:
-        sections["header"] = text.strip()
-        sections["detailed_data"] = text.strip()
-        return sections
+    sections: Dict[str, str] = {}
 
-    header_start = text[: markers[0].start].strip()
-    sections["header"] = header_start
+    section_patterns: Dict[str, List[str]] = {
+        "test_conditions": [
+            r"(?:Test\s*(?:Conditions|Koşulları|bedingungen))",
+            r"(?:Versuchsbedingungen)",
+            r"(?:Prüfbedingungen)",
+            r"(?:Examiner\s*:)",
+        ],
+        "graphs": [
+            r"(?:Graphs?|Grafikler|Diagramme?)",
+            r"(?:Abbildungen?)",
+            r"(?:Figures?)",
+        ],
+        "results": [
+            r"(?:Results?|Sonuçlar|Ergebnisse)",
+            r"(?:Test\s*Results?)",
+            r"(?:Summary)",
+            r"(?:Zusammenfassung)",
+        ],
+        "load_values": [
+            r"(?:Belastungswerte)",
+            r"(?:Load\s*Values?)",
+            r"(?:Yük\s*Değerleri)",
+        ],
+    }
 
-    for index, marker in enumerate(markers):
-        start_index = marker.end
-        newline_index = text.find("\n", start_index)
-        if newline_index != -1:
-            start_index = newline_index + 1
-        end_index = len(text)
-        for next_marker in markers[index + 1 :]:
-            if next_marker.start > marker.start:
-                end_index = next_marker.start
+    for section_key, patterns in section_patterns.items():
+        for pattern in patterns:
+            try:
+                match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+            except re.error:
+                match = None
+            if match:
+                start = match.start()
+                next_section_start = len(text)
+
+                for other_key, other_patterns in section_patterns.items():
+                    if other_key == section_key:
+                        continue
+                    for other_pattern in other_patterns:
+                        try:
+                            other_match = re.search(other_pattern, text[start + 10 :], re.IGNORECASE)
+                        except re.error:
+                            continue
+                        if other_match:
+                            potential_end = start + 10 + other_match.start()
+                            if potential_end < next_section_start:
+                                next_section_start = potential_end
+
+                section_content = text[start:next_section_start].strip()
+                if section_content:
+                    sections[section_key] = section_content
+                    logger.info("Bölüm bulundu: %s (%s karakter)", section_key, len(section_content))
                 break
-        content = text[start_index:end_index].strip()
-        if marker.section in sections and not sections[marker.section]:
-            sections[marker.section] = content
 
-    last_marker = markers[-1]
-    tail_content = text[last_marker.end :].strip()
-    if tail_content:
-        if not sections.get(last_marker.section):
-            sections[last_marker.section] = tail_content
-        else:
-            sections["detailed_data"] = tail_content
+    if not sections:
+        logger.warning("Hiçbir bölüm bulunamadı, tüm text 'test_conditions' olarak işleniyor")
+        sections["test_conditions"] = text
 
-    # Fill detailed data with remainder if still empty
-    if not sections["detailed_data"]:
-        consumed_segments: List[str] = []
-        for key in ["summary", "test_conditions", "graphs", "results"]:
-            if sections.get(key):
-                consumed_segments.append(sections[key])
-        remainder = text
-        for segment in consumed_segments:
-            remainder = remainder.replace(segment, "")
-        if remainder.strip():
-            sections["detailed_data"] = remainder.strip()
-
-    if not sections["summary"] and sections["header"]:
-        sections["summary"] = sections["header"]
+    for default_key in (
+        "test_conditions",
+        "graphs",
+        "results",
+        "load_values",
+        "summary",
+        "header",
+        "detailed_data",
+    ):
+        sections.setdefault(default_key, "")
 
     return sections
 
