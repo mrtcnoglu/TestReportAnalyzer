@@ -1,6 +1,7 @@
 """Utilities for extracting and interpreting test results from PDF reports."""
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -42,6 +43,8 @@ except ImportError:  # pragma: no cover
 PASS_PATTERN = r"(PASS|PASSED|SUCCESS|OK|✓|SUCCESSFUL|Başarılı|Geçti|BAŞARILI|GEÇTİ|Basarili|Gecti)"
 FAIL_PATTERN = r"(FAIL|FAILED|ERROR|EXCEPTION|✗|FAILURE|Başarısız|Kaldı|Hata|BAŞARISIZ|KALDI|HATA|Basarisiz|Kaldi)"
 TEST_NAME_PATTERN = r"(?:Test[:\s]+|test_|TEST[:\s-]+|Senaryo[:\s]+|SENARYO[:\s]+)([^\n\r]+)"
+
+logger = logging.getLogger(__name__)
 
 _PASS_KEYWORDS = {
     "pass",
@@ -470,82 +473,168 @@ def parse_test_results(text: str | dict) -> List[Dict[str, str]]:
 def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
     """Run a comprehensive analysis for a PDF by examining its sections individually."""
 
-    extraction_result = extract_text_from_pdf(pdf_path)
-    text = _ensure_text_string(extraction_result)
-    tables = extraction_result.get("tables") or []
+    logger.info("\n%s", "=" * 70)
+    logger.info("KAPSAMLI PDF ANALİZİ BAŞLADI")
+    logger.info("Dosya: %s", pdf_path)
+    logger.info("%s\n", "=" * 70)
 
-    basic_results = parse_test_results(text)
+    try:
+        logger.info("ADIM 1: Text ve Tablo Extraction")
+        extraction_result = extract_text_from_pdf(pdf_path)
+        text = extraction_result.get("structured_text") or _ensure_text_string(extraction_result)
+        tables = extraction_result.get("tables") or []
 
-    sections = detect_sections(text)
-    language = identify_section_language(text)
+        logger.info("  ✓ Text uzunluğu: %s karakter", len(text or ""))
+        logger.info("  ✓ Tablo sayısı: %s", len(tables))
+        if text:
+            logger.info("  ✓ İlk 200 karakter: %s", text[:200])
 
-    structured_test_conditions = None
-    test_conditions_text = sections.get("test_conditions", "")
-    if test_conditions_text:
-        structured_test_conditions = parse_test_conditions_structured(test_conditions_text)
-        structured_test_conditions["tables"] = tables
+        logger.info("\nADIM 2: Temel Test Parse")
+        basic_results = parse_test_results(text)
+        logger.info("  ✓ Bulunan test sayısı: %s", len(basic_results))
 
-        subsections = detect_subsections(test_conditions_text)
-        for key, value in subsections.items():
-            if value and key not in sections:
-                sections[key] = value
-            elif value:
-                sections[key] = value
+        logger.info("\nADIM 3: Bölüm Tanıma")
+        sections = detect_sections(text)
+        logger.info("  ✓ Tespit edilen bölüm sayısı: %s", len([v for v in sections.values() if v]))
+        for section_name, section_content in sections.items():
+            if section_content:
+                logger.info("    - %s: %s karakter", section_name, len(section_content))
 
-    graph_section_parts: List[str] = []
-    for key in ("graphs", "load_values"):
-        section_value = sections.get(key)
-        if section_value:
-            graph_section_parts.append(section_value)
-    graph_section = "\n".join(graph_section_parts)
+        if not sections or all(not value for value in sections.values()):
+            logger.warning("  ⚠ UYARI: Hiçbir bölüm tespit edilemedi!")
+            logger.info("  Text örneği (ilk 500 karakter):\n%s", (text or "")[:500])
 
-    section_analyses = {
-        "summary": sections.get("summary", ""),
-        "test_conditions": analyze_test_conditions(
-            test_conditions_text,
-            structured_data=structured_test_conditions,
+        language = identify_section_language(text)
+
+        logger.info("\nADIM 4: Yapılandırılmış Veri Parse")
+        structured_test_conditions: Optional[Dict[str, object]] = None
+        test_conditions_text = sections.get("test_conditions", "")
+        if test_conditions_text:
+            logger.info("  Test koşulları bölümü bulundu, parse ediliyor...")
+            structured_test_conditions = parse_test_conditions_structured(test_conditions_text) or {}
+            structured_test_conditions["tables"] = tables
+            logger.info("  ✓ Yapılandırılmış veri parse edildi")
+        else:
+            logger.warning("  ⚠ Test koşulları bölümü bulunamadı")
+
+        logger.info("\nADIM 5: Alt Bölüm Tanıma")
+        if test_conditions_text:
+            subsections = detect_subsections(test_conditions_text)
+            logger.info("  ✓ Alt bölüm sayısı: %s", len(subsections))
+            for sub_name, sub_content in subsections.items():
+                logger.info("    - %s: %s karakter", sub_name, len(sub_content or ""))
+                if sub_content:
+                    sections[sub_name] = sub_content
+        else:
+            logger.warning("  ⚠ Alt bölüm tanıma atlandı (test_conditions yok)")
+
+        logger.info("\nADIM 6: AI Analizi")
+        section_analyses: Dict[str, str] = {}
+
+        logger.info("  6.1 Test Koşulları Analizi...")
+        if structured_test_conditions:
+            try:
+                section_analyses["test_conditions"] = analyze_test_conditions(
+                    test_conditions_text,
+                    structured_data=structured_test_conditions,
+                    language=language,
+                )
+                logger.info(
+                    "  ✓ Test koşulları analiz edildi: %s karakter",
+                    len(section_analyses["test_conditions"] or ""),
+                )
+            except Exception as exc:
+                logger.error("  ✗ Test koşulları analiz hatası: %s", exc, exc_info=True)
+                section_analyses["test_conditions"] = f"Analiz hatası: {exc}"
+        else:
+            logger.warning("  ⚠ Test koşulları analizi atlandı (yapılandırılmış veri yok)")
+            section_analyses["test_conditions"] = "Test koşulları bölümü bulunamadı veya parse edilemedi."
+
+        logger.info("  6.2 Grafik/Tablo Analizi...")
+        graph_section = "\n".join(filter(None, [sections.get("graphs", ""), sections.get("load_values", "")]))
+        if graph_section.strip() or tables:
+            try:
+                section_analyses["graphs"] = analyze_graphs(
+                    graph_section or sections.get("graphs", ""),
+                    tables=tables,
+                    language=language,
+                )
+                logger.info(
+                    "  ✓ Grafikler analiz edildi: %s karakter",
+                    len(section_analyses["graphs"] or ""),
+                )
+            except Exception as exc:
+                logger.error("  ✗ Grafik analiz hatası: %s", exc, exc_info=True)
+                section_analyses["graphs"] = f"Analiz hatası: {exc}"
+        else:
+            logger.warning("  ⚠ Grafik bölümü bulunamadı")
+            section_analyses["graphs"] = "Grafik veya tablo verisi bulunamadı."
+
+        logger.info("  6.3 Sonuç Analizi...")
+        results_text = sections.get("results", "")
+        if results_text:
+            try:
+                section_analyses["results"] = analyze_results(results_text, language=language)
+                logger.info(
+                    "  ✓ Sonuçlar analiz edildi: %s karakter",
+                    len(section_analyses["results"] or ""),
+                )
+            except Exception as exc:
+                logger.error("  ✗ Sonuç analiz hatası: %s", exc, exc_info=True)
+                section_analyses["results"] = f"Analiz hatası: {exc}"
+        else:
+            logger.warning("  ⚠ Sonuç bölümü bulunamadı")
+            section_analyses["results"] = "Sonuç bölümü bulunamadı."
+
+        section_analyses.setdefault("summary", sections.get("summary", ""))
+        section_analyses.setdefault(
+            "detailed_data",
+            analyze_detailed_data(sections.get("detailed_data", ""), language=language),
+        )
+
+        logger.info("\nADIM 7: Kapsamlı Rapor Oluşturma")
+        comprehensive_report = generate_comprehensive_report(
+            section_analyses,
             language=language,
-        ),
-        "graphs": analyze_graphs(
-            graph_section or sections.get("graphs", ""),
-            tables=tables,
-            language=language,
-        ),
-        "results": analyze_results(sections.get("results", ""), language=language),
-        "detailed_data": analyze_detailed_data(sections.get("detailed_data", ""), language=language),
-    }
+            header=sections.get("header", ""),
+        )
+        logger.info("  ✓ Rapor oluşturuldu")
 
-    comprehensive_report = generate_comprehensive_report(
-        section_analyses,
-        language=language,
-        header=sections.get("header", ""),
-    )
+        total_tests = len(basic_results)
+        passed_tests = sum(1 for result in basic_results if result.get("status") == "PASS")
+        failed_tests = sum(1 for result in basic_results if result.get("status") == "FAIL")
 
-    total_tests = len(basic_results)
-    passed_tests = sum(1 for result in basic_results if result.get("status") == "PASS")
-    failed_tests = sum(1 for result in basic_results if result.get("status") == "FAIL")
+        metadata = {
+            "analysis_language": language,
+            "text_length": len(text or ""),
+            "table_count": len(tables),
+        }
 
-    metadata = {
-        "analysis_language": language,
-        "text_length": len(text),
-        "table_count": len(tables),
-    }
+        logger.info("\n%s", "=" * 70)
+        logger.info("ANALİZ BAŞARIYLA TAMAMLANDI")
+        logger.info("%s\n", "=" * 70)
 
-    return {
-        "basic_stats": {
-            "total_tests": total_tests,
-            "passed": passed_tests,
-            "failed": failed_tests,
-            "tests": basic_results,
-        },
-        "sections": sections,
-        "section_analyses": section_analyses,
-        "comprehensive_analysis": comprehensive_report,
-        "metadata": metadata,
-        "raw_text": text,
-        "structured_data": structured_test_conditions,
-        "tables": tables,
-    }
+        return {
+            "basic_stats": {
+                "total_tests": total_tests,
+                "passed": passed_tests,
+                "failed": failed_tests,
+                "tests": basic_results,
+            },
+            "sections": sections,
+            "section_analyses": section_analyses,
+            "comprehensive_analysis": comprehensive_report,
+            "metadata": metadata,
+            "raw_text": text,
+            "structured_data": structured_test_conditions,
+            "tables": tables,
+        }
+
+    except Exception as exc:  # pragma: no cover - defensive logging wrapper
+        logger.error("\n%s", "=" * 70)
+        logger.error("ANALİZ HATASI: %s", exc, exc_info=True)
+        logger.error("%s\n", "=" * 70)
+        raise
 
 
 def _parse_table_format(text: str | dict) -> List[Dict[str, str]]:

@@ -1,11 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import {
-  getDetailedReport,
-  getFailedTests,
-  getReportById,
-  getReportTables,
-} from "../api";
+import { getFailedTests, getReportById, getReportTables } from "../api";
 import TestList from "./TestList";
 
 const ReportDetail = () => {
@@ -23,16 +18,28 @@ const ReportDetail = () => {
   useEffect(() => {
     const loadReport = async () => {
       try {
-        const [reportData, failureData, detailedData] = await Promise.all([
+        const [reportData, failureData] = await Promise.all([
           getReportById(id),
           getFailedTests(id),
-          getDetailedReport(id),
         ]);
+
         setReport(reportData.report);
         setTests(reportData.results);
         setFailures(failureData);
+
+        const detailedResponse = await fetch(
+          `http://localhost:5000/api/reports/${id}/detailed`
+        );
+        if (!detailedResponse.ok) {
+          throw new Error("Detaylı analiz alınamadı");
+        }
+        const detailedData = await detailedResponse.json();
         setDetailedAnalysis(detailedData?.detailed_analysis || null);
+
+        console.log("Report loaded:", reportData);
+        console.log("Detailed analysis:", detailedData);
       } catch (err) {
+        console.error("Veri yükleme hatası:", err);
         setError("Rapor detayları alınırken bir hata oluştu.");
       } finally {
         setLoading(false);
@@ -157,14 +164,14 @@ const ReportDetail = () => {
         <div className="analysis-grid">
           {detailedAnalysis.test_conditions && (
             <div className="analysis-card">
-              <h3>Test Koşulları</h3>
+              <h3>📋 Test Koşulları</h3>
               <p>{detailedAnalysis.test_conditions}</p>
             </div>
           )}
 
           {detailedAnalysis.graphs && (
             <div className="analysis-card">
-              <h3>Grafikler</h3>
+              <h3>📊 Grafikler</h3>
               <p>{detailedAnalysis.graphs}</p>
             </div>
           )}
@@ -199,6 +206,25 @@ const ReportDetail = () => {
           )}
         </div>
       )}
+
+      {detailedAnalysis &&
+        (!detailedAnalysis.test_conditions || !detailedAnalysis.graphs) && (
+          <div
+            className="analysis-card"
+            style={{ backgroundColor: "#fff3cd" }}
+          >
+            <h3>⚠️ Debug Bilgisi</h3>
+            <p>
+              Test Koşulları: {" "}
+              {detailedAnalysis.test_conditions ? "Var" : "YOK"}
+            </p>
+            <p>Grafikler: {detailedAnalysis.graphs ? "Var" : "YOK"}</p>
+            <details>
+              <summary>Raw Data</summary>
+              <pre>{JSON.stringify(detailedAnalysis, null, 2)}</pre>
+            </details>
+          </div>
+        )}
 
       <h3>Tüm Testler</h3>
       <TestList tests={tests} showAiProvider />
