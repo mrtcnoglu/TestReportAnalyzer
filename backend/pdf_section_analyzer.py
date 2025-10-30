@@ -6,7 +6,10 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
-from .section_patterns import SECTION_PATTERNS
+try:  # pragma: no cover - allow running as a script without a package context
+    from .section_patterns import SECTION_PATTERNS
+except ImportError:  # pragma: no cover
+    from section_patterns import SECTION_PATTERNS  # type: ignore
 
 
 @dataclass(frozen=True)
