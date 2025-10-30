@@ -109,6 +109,20 @@ _SUMMARY_SKIP_PATTERN = re.compile(
 )
 
 
+def _ensure_text_string(text_or_dict: object) -> str:
+    """Return a string representation for extracted text results."""
+
+    if isinstance(text_or_dict, dict):
+        structured = text_or_dict.get("structured_text")
+        if structured:
+            return str(structured)
+        fallback = text_or_dict.get("text")
+        if fallback:
+            return str(fallback)
+        return ""
+    return str(text_or_dict or "")
+
+
 def extract_text_from_pdf(pdf_path: Path | str) -> Dict[str, object]:
     """Extract text and table contents from a PDF file."""
 
@@ -342,9 +356,10 @@ def _finalize_entry(entry: dict, context: str) -> Dict[str, str]:
     return result
 
 
-def parse_test_results(text: str) -> List[Dict[str, str]]:
-    """Parse raw text into structured test result dictionaries."""
+def parse_test_results(text: str | dict) -> List[Dict[str, str]]:
+    """Parse raw text (or extraction dict) into structured test result dictionaries."""
 
+    text = _ensure_text_string(text)
     if not text:
         return []
 
@@ -456,7 +471,7 @@ def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
     """Run a comprehensive analysis for a PDF by examining its sections individually."""
 
     extraction_result = extract_text_from_pdf(pdf_path)
-    text = extraction_result.get("structured_text") or extraction_result.get("text") or ""
+    text = _ensure_text_string(extraction_result)
     tables = extraction_result.get("tables") or []
 
     basic_results = parse_test_results(text)
@@ -533,9 +548,10 @@ def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
     }
 
 
-def _parse_table_format(text: str) -> List[Dict[str, str]]:
+def _parse_table_format(text: str | dict) -> List[Dict[str, str]]:
     """Parse table-like test result structures."""
 
+    text = _ensure_text_string(text)
     pass_pattern = re.compile(PASS_PATTERN, re.IGNORECASE)
     fail_pattern = re.compile(FAIL_PATTERN, re.IGNORECASE)
 

@@ -905,7 +905,22 @@ def upload_report():
 
     try:
         logger.info(f"=== PDF ANALİZ BAŞLADI: {filename} ===")
-        logger.info("Kapsamlı PDF analizi başlatılıyor...")
+        logger.info("Step 1: Text extraction")
+        extraction_result = extract_text_from_pdf(saved_path)
+        logger.info(
+            "Text uzunluğu: %s",
+            len((extraction_result.get("text") or "")),
+        )
+        logger.info(
+            "Structured text uzunluğu: %s",
+            len((extraction_result.get("structured_text") or "")),
+        )
+        logger.info(
+            "Tablo sayısı: %s",
+            len(extraction_result.get("tables") or []),
+        )
+
+        logger.info("Step 2: Comprehensive analysis")
         analysis_result = analyze_pdf_comprehensive(saved_path)
         logger.info("AI analizi tamamlandı")
 
@@ -930,9 +945,34 @@ def upload_report():
             value for value in sections.values() if isinstance(value, str)
         )
         report_type_key, report_type_label = infer_report_type(combined_text_for_type, filename)
+        logger.info("Step 3: Database save hazırlığı")
+    except AttributeError as exc:  # pragma: no cover - defensive
+        saved_path.unlink(missing_ok=True)
+        logger.error(f"AttributeError: {exc}", exc_info=True)
+        if "splitlines" in str(exc):
+            return (
+                jsonify(
+                    {
+                        "error": "PDF parse hatası: Veri formatı uyumsuzluğu",
+                        "detail": "extract_text_from_pdf dict döndürüyor ama kod string bekliyor",
+                        "hint": "pdf_analyzer.py dosyasındaki fonksiyonları kontrol edin",
+                    }
+                ),
+                500,
+            )
+        raise
     except Exception as exc:  # pragma: no cover - defensive
         saved_path.unlink(missing_ok=True)
-        return _json_error(f"Failed to analyse PDF: {exc}", 500)
+        logger.error(f"PDF analiz hatası: {exc}", exc_info=True)
+        return (
+            jsonify(
+                {
+                    "error": "PDF analizi başarısız oldu",
+                    "detail": str(exc),
+                }
+            ),
+            500,
+        )
 
     comprehensive_analysis = analysis_result.get("comprehensive_analysis", {})
     report_id = database.insert_report(
