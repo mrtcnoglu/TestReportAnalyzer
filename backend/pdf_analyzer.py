@@ -17,7 +17,12 @@ try:  # pragma: no cover - allow execution both as package and script
         analyze_test_conditions,
         generate_comprehensive_report,
     )
-    from .pdf_section_analyzer import detect_sections, identify_section_language
+    from .pdf_section_analyzer import (
+        detect_sections,
+        detect_subsections,
+        identify_section_language,
+    )
+    from .structured_data_parser import parse_test_conditions_structured
 except ImportError:  # pragma: no cover
     from ai_analyzer import (  # type: ignore
         ai_analyzer,
@@ -27,7 +32,12 @@ except ImportError:  # pragma: no cover
         analyze_test_conditions,
         generate_comprehensive_report,
     )
-    from pdf_section_analyzer import detect_sections, identify_section_language  # type: ignore
+    from pdf_section_analyzer import (  # type: ignore
+        detect_sections,
+        detect_subsections,
+        identify_section_language,
+    )
+    from structured_data_parser import parse_test_conditions_structured  # type: ignore
 
 PASS_PATTERN = r"(PASS|PASSED|SUCCESS|OK|✓|SUCCESSFUL|Başarılı|Geçti|BAŞARILI|GEÇTİ|Basarili|Gecti)"
 FAIL_PATTERN = r"(FAIL|FAILED|ERROR|EXCEPTION|✗|FAILURE|Başarısız|Kaldı|Hata|BAŞARISIZ|KALDI|HATA|Basarisiz|Kaldi)"
@@ -99,40 +109,66 @@ _SUMMARY_SKIP_PATTERN = re.compile(
 )
 
 
-def extract_text_from_pdf(pdf_path: Path | str) -> str:
-    """Extract text from a PDF file, including table contents when available."""
+def extract_text_from_pdf(pdf_path: Path | str) -> Dict[str, object]:
+    """Extract text and table contents from a PDF file."""
+
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
-    all_text: List[str] = []
+    text_segments: List[str] = []
+    structured_segments: List[str] = []
+    tables: List[Dict[str, object]] = []
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    all_text.append(text)
+            for page_number, page in enumerate(pdf.pages, 1):
+                page_text = page.extract_text()
+                if page_text:
+                    header = f"\n=== SAYFA {page_number} - METİN ===\n"
+                    structured_segments.append(f"{header}{page_text}")
+                    text_segments.append(page_text)
 
-                tables = page.extract_tables() or []
-                for table in tables:
+                extracted_tables = page.extract_tables() or []
+                for table_index, table in enumerate(extracted_tables, 1):
+                    table_info = {
+                        "page": page_number,
+                        "table_num": table_index,
+                        "data": table,
+                    }
+                    tables.append(table_info)
+
+                    table_lines = [f"\n=== SAYFA {page_number} - TABLO {table_index} ==="]
                     for row in table:
-                        if row:
-                            row_text = " | ".join(str(cell) if cell else "" for cell in row)
-                            if row_text.strip():
-                                all_text.append(row_text)
-
-        if all_text:
-            return "\n".join(all_text)
+                        if not row:
+                            continue
+                        row_text = " | ".join(str(cell) if cell else "" for cell in row)
+                        table_lines.append(row_text)
+                    structured_segments.append("\n".join(table_lines))
     except Exception:
-        # pdfplumber may fail on certain PDFs; fall back to PyPDF2 below.
-        pass
+        # pdfplumber may fail on certain PDFs; fall back below.
+        text_segments = []
+        structured_segments = []
+        tables = []
 
-    try:
-        reader = PdfReader(str(pdf_path))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except Exception:
-        return ""
+    if not structured_segments:
+        try:
+            reader = PdfReader(str(pdf_path))
+            text_pages = [page.extract_text() or "" for page in reader.pages]
+            text_segments = [segment for segment in text_pages if segment]
+            structured_segments = text_segments.copy()
+        except Exception:
+            text_segments = []
+            structured_segments = []
+
+    joined_text = "\n".join(text_segments).strip()
+    joined_structured = "\n".join(structured_segments).strip()
+
+    return {
+        "text": joined_text,
+        "tables": tables,
+        "structured_text": joined_structured or joined_text,
+    }
 
 
 def _normalise_status(token: str) -> Optional[str]:
@@ -419,16 +455,47 @@ def parse_test_results(text: str) -> List[Dict[str, str]]:
 def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
     """Run a comprehensive analysis for a PDF by examining its sections individually."""
 
-    text = extract_text_from_pdf(pdf_path)
+    extraction_result = extract_text_from_pdf(pdf_path)
+    text = extraction_result.get("structured_text") or extraction_result.get("text") or ""
+    tables = extraction_result.get("tables") or []
+
     basic_results = parse_test_results(text)
 
     sections = detect_sections(text)
     language = identify_section_language(text)
 
+    structured_test_conditions = None
+    test_conditions_text = sections.get("test_conditions", "")
+    if test_conditions_text:
+        structured_test_conditions = parse_test_conditions_structured(test_conditions_text)
+        structured_test_conditions["tables"] = tables
+
+        subsections = detect_subsections(test_conditions_text)
+        for key, value in subsections.items():
+            if value and key not in sections:
+                sections[key] = value
+            elif value:
+                sections[key] = value
+
+    graph_section_parts: List[str] = []
+    for key in ("graphs", "load_values"):
+        section_value = sections.get(key)
+        if section_value:
+            graph_section_parts.append(section_value)
+    graph_section = "\n".join(graph_section_parts)
+
     section_analyses = {
         "summary": sections.get("summary", ""),
-        "test_conditions": analyze_test_conditions(sections.get("test_conditions", ""), language=language),
-        "graphs": analyze_graphs(sections.get("graphs", ""), language=language),
+        "test_conditions": analyze_test_conditions(
+            test_conditions_text,
+            structured_data=structured_test_conditions,
+            language=language,
+        ),
+        "graphs": analyze_graphs(
+            graph_section or sections.get("graphs", ""),
+            tables=tables,
+            language=language,
+        ),
         "results": analyze_results(sections.get("results", ""), language=language),
         "detailed_data": analyze_detailed_data(sections.get("detailed_data", ""), language=language),
     }
@@ -446,6 +513,7 @@ def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
     metadata = {
         "analysis_language": language,
         "text_length": len(text),
+        "table_count": len(tables),
     }
 
     return {
@@ -460,6 +528,8 @@ def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
         "comprehensive_analysis": comprehensive_report,
         "metadata": metadata,
         "raw_text": text,
+        "structured_data": structured_test_conditions,
+        "tables": tables,
     }
 
 

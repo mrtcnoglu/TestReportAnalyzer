@@ -12,6 +12,11 @@ from anthropic import Anthropic
 from openai import OpenAI
 from dotenv import load_dotenv
 
+try:  # pragma: no cover - allow running as script
+    from .structured_data_parser import format_structured_data_for_ai
+except ImportError:  # pragma: no cover
+    from structured_data_parser import format_structured_data_for_ai  # type: ignore
+
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
 
@@ -916,21 +921,47 @@ Antwort auf Deutsch, maximal 200 Wörter.
 }
 
 
-def analyze_test_conditions(text: str, language: str = "tr") -> str:
+def analyze_test_conditions(
+    text: str,
+    structured_data: Optional[Dict[str, object]] = None,
+    language: str = "tr",
+) -> str:
     language = _normalise_language(language)
     cleaned = (text or "").strip()
-    if not cleaned:
+
+    if not cleaned and not structured_data:
         return _no_data_message("test_conditions", language)
 
-    prompt = _format_prompt(TEST_CONDITION_PROMPTS.get(language, TEST_CONDITION_PROMPTS["tr"]), cleaned)
+    formatted_text = cleaned
+    if structured_data:
+        formatted_text = format_structured_data_for_ai(structured_data) or cleaned
+
+    language_names = {"tr": "Türkçe", "en": "İngilizce", "de": "Almanca"}
+    target_language = language_names.get(language, "Türkçe")
+
+    prompt = f"""Aşağıdaki test koşullarını analiz et ve ÖZETİNİ çıkar ({target_language}):
+
+{formatted_text}
+
+ÖNEMLİ:
+- Maksimum 300 kelime
+- Şu bilgileri vurgula:
+  1. Test standardı (ECE-R, UN-R)
+  2. Test edilen araç/cihaz
+  3. Test tarihi
+  4. Ölçüm yöntemi
+  5. Özel koşullar
+
+SADECE ÖZETİ VER, orijinal metni tekrarlama!"""
+
     response = _request_section_analysis(prompt, max_tokens=700)
     if response:
         return response.strip()
 
     defaults = SECTION_LANGUAGE_STRINGS[language]
-    items = _extract_list_items(cleaned)
+    items = _extract_list_items(formatted_text)
     if not items:
-        summary = _summarise_sentences(cleaned)
+        summary = _summarise_sentences(formatted_text)
         if not summary:
             return _no_data_message("test_conditions", language)
         items = [summary]
@@ -940,22 +971,54 @@ def analyze_test_conditions(text: str, language: str = "tr") -> str:
     return "\n".join(bullet_lines)
 
 
-def analyze_graphs(text: str, language: str = "tr") -> str:
+def analyze_graphs(
+    text: str,
+    tables: Optional[Sequence[Dict[str, object]]] = None,
+    language: str = "tr",
+) -> str:
     language = _normalise_language(language)
     cleaned = (text or "").strip()
-    if not cleaned:
+
+    if not cleaned and not tables:
         return _no_data_message("graphs", language)
 
-    prompt = _format_prompt(GRAPH_PROMPTS.get(language, GRAPH_PROMPTS["tr"]), cleaned)
+    content = cleaned
+    if tables:
+        table_lines = ["\n=== TABLO VERİLERİ ==="]
+        for table in tables:
+            page = table.get("page")
+            table_num = table.get("table_num")
+            table_lines.append(f"\nSayfa {page}, Tablo {table_num}:")
+            data_rows = table.get("data") or []
+            for row in data_rows[:10]:
+                row_values = [str(cell) if cell else "-" for cell in row]
+                table_lines.append("  | ".join(row_values))
+        content = f"{cleaned}\n\n" + "\n".join(table_lines) if cleaned else "\n".join(table_lines)
+
+    language_names = {"tr": "Türkçe", "en": "İngilizce", "de": "Almanca"}
+    target_language = language_names.get(language, "Türkçe")
+
+    prompt = f"""Aşağıdaki bölümde grafik/tablo verileri var. Analiz et ({target_language}):
+
+{content}
+
+GÖREVİN:
+1. Hangi parametreler ölçülmüş? (örn: Kopfbeschl., Brustbeschl., Oberschenkelkraft)
+2. Ölçüm birimleri neler? (g, kN, ms)
+3. Değer aralıkları neler? (min-max)
+4. Varsa limit değerler/kriterler
+
+SADECE BU BİLGİLERİ VER, maksimum 200 kelime."""
+
     response = _request_section_analysis(prompt, max_tokens=500)
     if response:
         return response.strip()
 
     defaults = SECTION_LANGUAGE_STRINGS[language]
     pattern = re.compile(r"(grafik|graph|chart|diagramm|figure)[^\n]*", re.IGNORECASE)
-    highlights = [match.group(0).strip() for match in pattern.finditer(cleaned)]
+    highlights = [match.group(0).strip() for match in pattern.finditer(content)]
     if not highlights:
-        highlights = _extract_list_items(cleaned)
+        highlights = _extract_list_items(content)
     if not highlights:
         return defaults["no_graphs"]
     highlights = highlights[:5]
