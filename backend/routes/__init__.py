@@ -17,6 +17,7 @@ try:  # pragma: no cover - import flexibility
     from ..translation_utils import fallback_translate_text
     from ..pdf_analyzer import (
         REPORT_TYPE_LABELS,
+        analyze_pdf_comprehensive,
         extract_text_from_pdf,
         infer_report_type,
         parse_test_results,
@@ -27,6 +28,7 @@ except ImportError:  # pragma: no cover
     from translation_utils import fallback_translate_text  # type: ignore
     from pdf_analyzer import (  # type: ignore
         REPORT_TYPE_LABELS,
+        analyze_pdf_comprehensive,
         extract_text_from_pdf,
         infer_report_type,
         parse_test_results,
@@ -902,30 +904,53 @@ def upload_report():
     file.save(saved_path)
 
     try:
-        logger.info(f"PDF parse ediliyor: {filename}")
-        text = extract_text_from_pdf(saved_path)
-        logger.info(f"Çıkarılan text uzunluğu: {len(text)} karakter")
-        parsed_results = parse_test_results(text)
+        logger.info(f"=== PDF ANALİZ BAŞLADI: {filename} ===")
+        logger.info("Kapsamlı PDF analizi başlatılıyor...")
+        analysis_result = analyze_pdf_comprehensive(saved_path)
+        logger.info("AI analizi tamamlandı")
+
+        raw_text = analysis_result.pop("raw_text", "") or ""
+        sections = analysis_result.get("sections", {}) or {}
+        text_length = analysis_result.get("metadata", {}).get("text_length") or len(raw_text)
+        logger.info(f"Text uzunluğu: {text_length} karakter")
+        for section_name, section_content in sections.items():
+            section_len = len(section_content or "")
+            logger.info(f"Bölüm [{section_name}]: {section_len} karakter")
+
+        basic_stats = analysis_result.get("basic_stats", {})
+        parsed_results = basic_stats.get("tests", [])
         logger.info(f"Bulunan test sayısı: {len(parsed_results)}")
         if len(parsed_results) == 0:
             logger.warning(f"UYARI: PDF'de hiç test bulunamadı! Dosya: {filename}")
-            logger.debug(f"İlk 500 karakter: {text[:500]}")
-        report_type_key, report_type_label = infer_report_type(text, filename)
+            preview = (raw_text or "")[:500]
+            if preview:
+                logger.debug(f"İlk 500 karakter: {preview}")
+
+        combined_text_for_type = raw_text or "\n".join(
+            value for value in sections.values() if isinstance(value, str)
+        )
+        report_type_key, report_type_label = infer_report_type(combined_text_for_type, filename)
     except Exception as exc:  # pragma: no cover - defensive
         saved_path.unlink(missing_ok=True)
         return _json_error(f"Failed to analyse PDF: {exc}", 500)
 
-    report_id = database.insert_report(filename, str(saved_path), report_type_key)
+    comprehensive_analysis = analysis_result.get("comprehensive_analysis", {})
+    report_id = database.insert_report(
+        filename,
+        str(saved_path),
+        report_type_key,
+        comprehensive_analysis,
+    )
 
-    total_tests = len(parsed_results)
-    passed_tests = sum(1 for result in parsed_results if result["status"] == "PASS")
-    failed_tests = total_tests - passed_tests
+    total_tests = basic_stats.get("total_tests", 0)
+    passed_tests = basic_stats.get("passed", 0)
+    failed_tests = basic_stats.get("failed", 0)
 
     for result in parsed_results:
         database.insert_test_result(
             report_id,
-            result["test_name"],
-            result["status"],
+            result.get("test_name", "Unknown Test"),
+            result.get("status", "PASS"),
             result.get("error_message", ""),
             result.get("failure_reason"),
             result.get("suggested_fix"),
@@ -933,10 +958,13 @@ def upload_report():
         )
 
     database.update_report_stats(report_id, total_tests, passed_tests, failed_tests)
+    database.update_report_comprehensive_analysis(report_id, comprehensive_analysis)
 
     report = database.get_report_by_id(report_id)
     if report is not None:
         report["test_type_label"] = report_type_label
+
+    logger.info(f"=== PDF ANALİZ BİTTİ: {filename} ===")
 
     return (
         jsonify(
@@ -947,6 +975,7 @@ def upload_report():
                     "passed": passed_tests,
                     "failed": failed_tests,
                 },
+                "comprehensive_analysis": comprehensive_analysis,
             }
         ),
         201,
@@ -972,6 +1001,37 @@ def get_report(report_id: int):
     results = database.get_test_results(report_id)
     report["test_type_label"] = _resolve_report_type_label(report.get("test_type"))
     return jsonify({"report": report, "results": results})
+
+
+@reports_bp.route("/reports/<int:report_id>/detailed", methods=["GET"])
+def get_detailed_report(report_id: int):
+    """Return the comprehensive AI-backed analysis for a report."""
+
+    report = database.get_report_by_id(report_id)
+    if not report:
+        return _json_error("Report not found.", 404)
+
+    detailed_analysis = {
+        "test_conditions": (report.get("test_conditions_summary") or ""),
+        "graphs": (report.get("graphs_description") or ""),
+        "results": (report.get("detailed_results") or ""),
+        "improvements": (report.get("improvement_suggestions") or ""),
+        "analysis_language": report.get("analysis_language", "tr"),
+    }
+
+    return jsonify(
+        {
+            "report_id": report_id,
+            "filename": report.get("filename"),
+            "upload_date": report.get("upload_date"),
+            "basic_stats": {
+                "total": report.get("total_tests", 0),
+                "passed": report.get("passed_tests", 0),
+                "failed": report.get("failed_tests", 0),
+            },
+            "detailed_analysis": detailed_analysis,
+        }
+    )
 
 
 @reports_bp.route("/reports/<int:report_id>/download", methods=["GET"])

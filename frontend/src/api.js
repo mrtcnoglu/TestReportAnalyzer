@@ -30,6 +30,11 @@ export const getReportById = async (id) => {
   return response.data;
 };
 
+export const getDetailedReport = async (id) => {
+  const response = await client.get(`/reports/${id}/detailed`);
+  return response.data;
+};
+
 export const getFailedTests = async (id) => {
   const response = await client.get(`/reports/${id}/failures`);
   return response.data.failures;

@@ -200,6 +200,53 @@ a:hover {
   background-color: rgba(148, 163, 184, 0.12);
 }
 
+.analysis-grid {
+  display: grid;
+  gap: 16px;
+  margin: 16px 0;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.analysis-card {
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 20px;
+  background: var(--surface-color, #ffffff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.analysis-card h3 {
+  color: #1f2937;
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.25rem;
+}
+
+.analysis-card p {
+  color: var(--muted-color, #4b5563);
+  line-height: 1.6;
+}
+
+.analysis-card pre {
+  background: var(--background-color, #f9fafb);
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  color: var(--text-color, #111827);
+}
+
+.analysis-card ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--muted-color, #4b5563);
+  line-height: 1.6;
+}
+
+.analysis-card li {
+  margin-bottom: 0.35rem;
+}
+
 .report-search-result-name {
   font-weight: 600;
   font-size: 0.95rem;

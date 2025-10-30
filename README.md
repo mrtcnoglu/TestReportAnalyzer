@@ -11,6 +11,41 @@ TestReportAnalyzer, otomatik test raporlarını analiz ederek başarısız testl
 - Detay sayfasında test bazlı inceleme ve başarısız testlerin ayrı listelenmesi.
 - Raporların sistemden silinebilmesi.
 
+## Gelişmiş PDF Analizi
+
+Uygulama, test raporlarını **bölüm bölüm** inceleyerek AI destekli zengin içerikler üretir:
+
+### Analiz Edilen Bölümler
+
+1. **Test Koşulları:** Kullanılan standartlar, test edilen cihazlar ve ortam detayları.
+2. **Grafikler:** Grafik ve diyagramların anlatımı, öne çıkan bulgular.
+3. **Test Sonuçları:** Ölçümler, birimler, başarı kriterleri ve tablolaştırılmış özet.
+4. **İyileştirme Önerileri:** AI önerileri, riskli alanlar için aksiyon maddeleri.
+
+### Desteklenen Diller
+
+- 🇹🇷 Türkçe
+- 🇬🇧 İngilizce
+- 🇩🇪 Almanca
+
+### Örnek Çıktı
+
+```json
+{
+  "basic_stats": {
+    "total_tests": 2,
+    "passed": 2,
+    "failed": 0
+  },
+  "comprehensive_analysis": {
+    "test_conditions": "UN-R80 standardı, kızak testi koşulları...",
+    "graphs": "Grafik 1: Hız - zaman ilişkisi...",
+    "results": "| # | Detay |\n| --- | --- |\n| 1 | Test 1: Homologasyon - Geçti |",
+    "improvements": "Tüm testler başarılı; mevcut validasyon sürecini koruyun."
+  }
+}
+```
+
 ## Teknoloji Stack
 - **Backend:** Python 3, Flask, SQLite, pdfplumber / PyPDF2, python-dateutil
 - **Frontend:** React, React Router, Axios, React Scripts

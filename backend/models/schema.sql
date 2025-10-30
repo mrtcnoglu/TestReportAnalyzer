@@ -6,7 +6,12 @@ CREATE TABLE IF NOT EXISTS reports (
     passed_tests INTEGER DEFAULT 0,
     failed_tests INTEGER DEFAULT 0,
     pdf_path TEXT NOT NULL,
-    test_type TEXT DEFAULT 'unknown'
+    test_type TEXT DEFAULT 'unknown',
+    test_conditions_summary TEXT,
+    graphs_description TEXT,
+    detailed_results TEXT,
+    improvement_suggestions TEXT,
+    analysis_language TEXT DEFAULT 'tr'
 );
 
 CREATE TABLE IF NOT EXISTS test_results (

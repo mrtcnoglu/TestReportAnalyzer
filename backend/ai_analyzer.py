@@ -42,6 +42,60 @@ DEFAULT_SUMMARY_LABELS: Dict[str, Dict[str, str]] = {
     },
 }
 
+SECTION_LANGUAGE_STRINGS: Dict[str, Dict[str, str]] = {
+    "tr": {
+        "no_test_conditions": "Test koşullarına ilişkin belirgin bilgi bulunamadı.",
+        "no_graphs": "Grafikler hakkında açık bilgi yok.",
+        "no_results": "Test sonuçları metin içerisinde tespit edilemedi.",
+        "no_detailed": "Detaylı teknik veri bölümü bulunamadı.",
+        "conditions_intro": "Metinden çıkarılan test koşulları:",
+        "graphs_intro": "Grafiklere ilişkin öne çıkan noktalar:",
+        "results_intro": "Test sonuçlarının özet tablosu:",
+        "appendix": "Ek teknik veriler:",
+        "improvements_intro": "Önerilen geliştirme maddeleri:",
+        "improvements_fail": (
+            "Belirlenen riskleri gidermek için test parametrelerini, ölçüm cihazlarını ve standart referanslarını gözden geçirin."
+        ),
+        "improvements_success": "Test sonuçları olumlu; mevcut validasyon sürecini koruyabilirsiniz.",
+        "table_header_index": "#",
+        "table_header_detail": "Detay",
+    },
+    "en": {
+        "no_test_conditions": "No explicit test condition details were detected.",
+        "no_graphs": "There is no explicit information about charts or graphs.",
+        "no_results": "Detailed test results were not identified in the document.",
+        "no_detailed": "No additional technical data section was detected.",
+        "conditions_intro": "Extracted test condition highlights:",
+        "graphs_intro": "Key points related to charts/figures:",
+        "results_intro": "Summary table of the reported test outcomes:",
+        "appendix": "Additional technical observations:",
+        "improvements_intro": "Recommended improvement actions:",
+        "improvements_fail": (
+            "Review acceptance criteria, instrumentation and repeat the tests focusing on the flagged measurements."
+        ),
+        "improvements_success": "All findings look positive; keep the current validation workflow stable.",
+        "table_header_index": "#",
+        "table_header_detail": "Detail",
+    },
+    "de": {
+        "no_test_conditions": "Es konnten keine eindeutigen Prüfbedingungen erkannt werden.",
+        "no_graphs": "Im Bericht wurden keine klaren Angaben zu Diagrammen gefunden.",
+        "no_results": "Ausführliche Testergebnisse wurden nicht identifiziert.",
+        "no_detailed": "Es wurde kein Abschnitt mit zusätzlichen technischen Daten gefunden.",
+        "conditions_intro": "Hervorhebungen zu den Prüfbedingungen:",
+        "graphs_intro": "Wesentliche Hinweise zu Diagrammen/Grafiken:",
+        "results_intro": "Zusammenfassung der berichteten Testergebnisse:",
+        "appendix": "Zusätzliche technische Beobachtungen:",
+        "improvements_intro": "Empfohlene Verbesserungsmaßnahmen:",
+        "improvements_fail": (
+            "Überprüfen Sie Grenzwerte, Messaufbauten und wiederholen Sie die Tests mit Fokus auf die auffälligen Messwerte."
+        ),
+        "improvements_success": "Die Ergebnisse wirken positiv; halten Sie den aktuellen Prüfablauf bei.",
+        "table_header_index": "#",
+        "table_header_detail": "Detail",
+    },
+}
+
 
 class AIAnalyzer:
     """Test başarısızlıklarını AI veya kural tabanlı yöntemlerle analiz eder."""
@@ -258,6 +312,72 @@ class AIAnalyzer:
             raise ValueError("ChatGPT yanıtı boş döndü")
 
         return json.loads(content)
+
+    def request_text_completion(self, prompt: str, *, max_tokens: Optional[int] = None) -> Optional[str]:
+        """Return a plain-text completion using the configured AI provider if possible."""
+
+        self._refresh_configuration()
+        provider = (self.provider or "none").lower()
+        if provider == "none":
+            return None
+
+        candidates: List[str]
+        if provider == "both":
+            candidates = ["claude", "chatgpt"]
+        else:
+            candidates = [provider]
+
+        for candidate in candidates:
+            try:
+                if candidate == "claude":
+                    if not self.claude_client:
+                        continue
+                    client = self.claude_client
+                    if hasattr(client, "with_options"):
+                        client = client.with_options(timeout=self.timeout)
+                    response = client.messages.create(
+                        model=self.claude_model,
+                        max_tokens=max_tokens or self.max_tokens,
+                        temperature=0,
+                        messages=[{"role": "user", "content": prompt}],
+                    )
+                    text = ""
+                    if getattr(response, "content", None):
+                        text = "".join(
+                            getattr(block, "text", "")
+                            for block in response.content
+                            if getattr(block, "text", "")
+                        )
+                else:
+                    if not self.openai_client:
+                        continue
+                    client = self.openai_client
+                    if hasattr(client, "with_options"):
+                        client = client.with_options(timeout=self.timeout)
+                    response = client.chat.completions.create(
+                        model=self.openai_model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You are an expert automotive test analyst. "
+                                    "Respond concisely in the same language as the user."
+                                ),
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
+                        max_tokens=max_tokens or self.max_tokens,
+                        temperature=0,
+                    )
+                    text = response.choices[0].message.content if response.choices else ""
+
+                if text and text.strip():
+                    return text.strip()
+            except Exception as exc:  # pragma: no cover - API errors should not crash the app
+                print(f"[AIAnalyzer] {candidate} section analysis failed: {exc}")
+                continue
+
+        return None
 
     def _prepare_report_excerpt(self, text: str, limit: int = 12000) -> str:
         """PDF metninden özet çıkar ve uzunluğu sınırla."""
@@ -552,7 +672,7 @@ Tüm metinleri ilgili dilde üret. JSON dışında açıklama yapma.
 
         return None
 
-    def _rule_based_analysis(self, error_message: str) -> Dict[str, str]:
+def _rule_based_analysis(self, error_message: str) -> Dict[str, str]:
         """Basit kural tabanlı analizle fallback sonucu döndür."""
         message = (error_message or "").lower()
 
@@ -602,3 +722,352 @@ Tüm metinleri ilgili dilde üret. JSON dışında açıklama yapma.
 
 # Dosyanın sonunda singleton instance oluştur
 ai_analyzer = AIAnalyzer()
+
+
+def _normalise_language(language: str) -> str:
+    language = (language or "").strip().lower()
+    if language in SECTION_LANGUAGE_STRINGS:
+        return language
+    return "tr"
+
+
+def _clean_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def _summarise_sentences(text: str, max_sentences: int = 3, max_chars: int = 600) -> str:
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return ""
+    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+    if not sentences:
+        summary = cleaned[:max_chars]
+    else:
+        summary = " ".join(sentences[:max_sentences])
+    if len(summary) > max_chars:
+        summary = summary[:max_chars].rstrip() + "..."
+    return summary
+
+
+def _extract_list_items(text: str) -> List[str]:
+    items: List[str] = []
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        stripped = re.sub(r"^[\-•*·●◦0-9\)\(\.\s]+", "", stripped).strip()
+        if len(stripped) < 3:
+            continue
+        items.append(stripped)
+    return items
+
+
+def _format_prompt(template: str, text: str) -> str:
+    return textwrap.dedent(template).strip().format(text=text.strip())
+
+
+def _request_section_analysis(prompt: str, max_tokens: int = 700) -> Optional[str]:
+    return ai_analyzer.request_text_completion(prompt, max_tokens=max_tokens)
+
+
+def _no_data_message(section: str, language: str) -> str:
+    language = _normalise_language(language)
+    defaults = SECTION_LANGUAGE_STRINGS.get(language, {})
+    key_map = {
+        "test_conditions": "no_test_conditions",
+        "graphs": "no_graphs",
+        "results": "no_results",
+        "detailed_data": "no_detailed",
+    }
+    return defaults.get(key_map.get(section, ""), "") or ""
+
+
+TEST_CONDITION_PROMPTS = {
+    "tr": """
+Aşağıdaki test koşulları metnini analiz et ve şu bilgileri Türkçe ver:
+
+1. Hangi test standardı kullanılmış? (örn: UN-R80, ECE-R)
+2. Test edilen cihaz/araç nedir?
+3. Test ortamı ve koşulları nelerdir?
+4. Ölçüm yöntemleri nelerdir?
+
+Kısa ve öz, maksimum 200 kelime.
+
+{text}
+""",
+    "en": """
+Analyse the following test conditions in English and answer:
+1. Which standards are referenced (e.g. UN-R80, ECE-R)?
+2. Which device or system was evaluated?
+3. What are the environmental or laboratory conditions?
+4. Which measurement methods or instruments were used?
+
+Respond in at most 200 words.
+
+{text}
+""",
+    "de": """
+Analysiere die folgenden Prüfbedingungen auf Deutsch:
+1. Welche Normen werden erwähnt (z. B. UN-R80, ECE-R)?
+2. Welches Gerät oder System wurde geprüft?
+3. Welche Umgebungs- oder Laborbedingungen liegen vor?
+4. Welche Messmethoden oder Instrumente wurden verwendet?
+
+Antwort in höchstens 200 Wörtern.
+
+{text}
+""",
+}
+
+
+GRAPH_PROMPTS = {
+    "tr": """
+Bu metin grafikler veya diyagramlardan bahsediyor mu?
+
+Eğer bahsediyorsa:
+- Her grafiğin konusunu belirt
+- Grafikte ne tür veriler gösterilmiş?
+- Grafikteki temel bulgu nedir?
+
+Eğer bahsetmiyorsa: "Grafikler hakkında açık bilgi yok" de.
+
+Maksimum 150 kelime, Türkçe.
+
+{text}
+""",
+    "en": """
+Review the section and summarise any references to charts or figures.
+If charts exist, describe their focus, displayed metrics and main insights.
+If not, state that there is no explicit chart information.
+Answer in English, maximum 150 words.
+
+{text}
+""",
+    "de": """
+Untersuche den Abschnitt auf Hinweise zu Diagrammen oder Abbildungen.
+Wenn vorhanden, beschreibe Thema, dargestellte Messgrößen und zentrale Aussage.
+Falls nicht vorhanden, erwähne ausdrücklich, dass keine Diagramminformation vorliegt.
+Antwort auf Deutsch, maximal 150 Wörter.
+
+{text}
+""",
+}
+
+
+RESULT_PROMPTS = {
+    "tr": """
+Test sonuçlarını detaylı analiz et:
+1. Kaç test yapılmış?
+2. Her testin amacı nedir?
+3. Ölçülen değerler ve birimler nelerdir?
+4. Başarı/başarısızlık kriterleri nelerdir?
+5. Genel değerlendirme
+
+Tablo formatında düzenle, Türkçe, maksimum 300 kelime.
+
+{text}
+""",
+    "en": """
+Provide a detailed analysis of the test results in English:
+1. How many tests are listed?
+2. What is the purpose of each test?
+3. Which measurements and units are mentioned?
+4. What are the pass/fail criteria?
+5. Give an overall assessment.
+
+Format the answer as a table, maximum 300 words.
+
+{text}
+""",
+    "de": """
+Analysiere die Testergebnisse im Detail:
+1. Wie viele Tests werden genannt?
+2. Welches Ziel verfolgt jeder Test?
+3. Welche Messwerte und Einheiten werden erwähnt?
+4. Welche Kriterien entscheiden über Bestehen/Nichtbestehen?
+5. Gesamteinschätzung
+
+Stelle die Antwort als Tabelle dar, maximal 300 Wörter, auf Deutsch.
+
+{text}
+""",
+}
+
+
+DETAILED_DATA_PROMPTS = {
+    "tr": """
+Bu bölümdeki teknik verileri analiz et. Önemli ölçümler, değerler ve gözlemleri maddeler halinde özetle.
+Türkçe ve 200 kelimeyi geçmesin.
+
+{text}
+""",
+    "en": """
+Summarise the technical data in bullet points. Highlight critical measurements, values and observations.
+Reply in English, no more than 200 words.
+
+{text}
+""",
+    "de": """
+Fasse die technischen Daten stichpunktartig zusammen. Hebe wichtige Messungen, Werte und Beobachtungen hervor.
+Antwort auf Deutsch, maximal 200 Wörter.
+
+{text}
+""",
+}
+
+
+def analyze_test_conditions(text: str, language: str = "tr") -> str:
+    language = _normalise_language(language)
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return _no_data_message("test_conditions", language)
+
+    prompt = _format_prompt(TEST_CONDITION_PROMPTS.get(language, TEST_CONDITION_PROMPTS["tr"]), cleaned)
+    response = _request_section_analysis(prompt, max_tokens=700)
+    if response:
+        return response.strip()
+
+    defaults = SECTION_LANGUAGE_STRINGS[language]
+    items = _extract_list_items(cleaned)
+    if not items:
+        summary = _summarise_sentences(cleaned)
+        if not summary:
+            return _no_data_message("test_conditions", language)
+        items = [summary]
+    items = items[:5]
+    bullet_lines = [defaults["conditions_intro"]]
+    bullet_lines.extend(f"- {item}" for item in items)
+    return "\n".join(bullet_lines)
+
+
+def analyze_graphs(text: str, language: str = "tr") -> str:
+    language = _normalise_language(language)
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return _no_data_message("graphs", language)
+
+    prompt = _format_prompt(GRAPH_PROMPTS.get(language, GRAPH_PROMPTS["tr"]), cleaned)
+    response = _request_section_analysis(prompt, max_tokens=500)
+    if response:
+        return response.strip()
+
+    defaults = SECTION_LANGUAGE_STRINGS[language]
+    pattern = re.compile(r"(grafik|graph|chart|diagramm|figure)[^\n]*", re.IGNORECASE)
+    highlights = [match.group(0).strip() for match in pattern.finditer(cleaned)]
+    if not highlights:
+        highlights = _extract_list_items(cleaned)
+    if not highlights:
+        return defaults["no_graphs"]
+    highlights = highlights[:5]
+    lines = [defaults["graphs_intro"]]
+    lines.extend(f"- {item.strip()}" for item in highlights if item.strip())
+    return "\n".join(lines)
+
+
+def analyze_results(text: str, language: str = "tr") -> str:
+    language = _normalise_language(language)
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return _no_data_message("results", language)
+
+    prompt = _format_prompt(RESULT_PROMPTS.get(language, RESULT_PROMPTS["tr"]), cleaned)
+    response = _request_section_analysis(prompt, max_tokens=750)
+    if response:
+        return response.strip()
+
+    defaults = SECTION_LANGUAGE_STRINGS[language]
+    rows = _extract_list_items(cleaned)
+    if not rows:
+        rows = re.split(r"(?<=[.!?])\s+", cleaned)
+    rows = [row.strip() for row in rows if row.strip()]
+    if not rows:
+        return defaults["no_results"]
+
+    header_index = defaults["table_header_index"]
+    header_detail = defaults["table_header_detail"]
+    table_lines = [defaults["results_intro"], f"| {header_index} | {header_detail} |", "| --- | --- |"]
+    for idx, row in enumerate(rows[:6], start=1):
+        table_lines.append(f"| {idx} | {row} |")
+    return "\n".join(table_lines)
+
+
+def analyze_detailed_data(text: str, language: str = "tr") -> str:
+    language = _normalise_language(language)
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return _no_data_message("detailed_data", language)
+
+    prompt = _format_prompt(DETAILED_DATA_PROMPTS.get(language, DETAILED_DATA_PROMPTS["tr"]), cleaned)
+    response = _request_section_analysis(prompt, max_tokens=650)
+    if response:
+        return response.strip()
+
+    items = _extract_list_items(cleaned)
+    if not items:
+        summary = _summarise_sentences(cleaned, max_sentences=4, max_chars=800)
+        if not summary:
+            return _no_data_message("detailed_data", language)
+        items = [summary]
+    items = items[:7]
+    lines = [f"- {item}" for item in items]
+    return "\n".join(lines)
+
+
+def _contains_failure_indicators(*texts: str) -> bool:
+    haystack = " ".join(texts).lower()
+    return bool(re.search(r"\b(fail|failed|failure|error|başarısız|kaldı|fehl|abweichung)\b", haystack))
+
+
+def generate_comprehensive_report(
+    sections_analysis: Dict[str, str],
+    *,
+    language: str = "tr",
+    header: str = "",
+) -> Dict[str, str]:
+    language = _normalise_language(language)
+    defaults = SECTION_LANGUAGE_STRINGS[language]
+
+    summary_source = sections_analysis.get("summary") or header or sections_analysis.get("results") or ""
+    summary = _summarise_sentences(summary_source, max_sentences=3, max_chars=600)
+
+    test_conditions = sections_analysis.get("test_conditions", "").strip()
+    graphs = sections_analysis.get("graphs", "").strip()
+    results_section = sections_analysis.get("results", "").strip()
+    detailed_data = sections_analysis.get("detailed_data", "").strip()
+
+    combined_results = results_section
+    detailed_summary = detailed_data or ""
+
+    if detailed_data:
+        appendix_heading = defaults["appendix"]
+        if combined_results:
+            combined_results = f"{combined_results}\n\n{appendix_heading}\n{detailed_data}"
+        else:
+            combined_results = f"{appendix_heading}\n{detailed_data}"
+
+    if not combined_results:
+        combined_results = defaults["no_results"]
+
+    improvements: str
+    if _contains_failure_indicators(results_section, detailed_data):
+        improvement_items = _extract_list_items(detailed_data)[:3]
+        if not improvement_items:
+            improvement_items = _extract_list_items(results_section)[:3]
+        if improvement_items:
+            lines = [defaults["improvements_intro"]]
+            lines.extend(f"- {item}" for item in improvement_items)
+            improvements = "\n".join(lines)
+        else:
+            improvements = defaults["improvements_fail"]
+    else:
+        improvements = defaults["improvements_success"]
+
+    return {
+        "summary": summary,
+        "test_conditions": test_conditions or defaults["no_test_conditions"],
+        "graphs": graphs or defaults["no_graphs"],
+        "results": combined_results,
+        "detailed_data": detailed_summary or defaults["no_detailed"],
+        "improvements": improvements,
+        "analysis_language": language,
+    }
