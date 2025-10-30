@@ -1378,15 +1378,25 @@ def analyze_files_with_ai():
             temp_path = Path(temp_file.name)
 
         try:
-            text = extract_text_from_pdf(temp_path)
-            parsed_results = parse_test_results(text)
+            extraction = extract_text_from_pdf(temp_path)
+            raw_text = (
+                extraction.get("structured_text")
+                if isinstance(extraction, dict)
+                else ""
+            ) or (
+                extraction.get("text")
+                if isinstance(extraction, dict)
+                else str(extraction)
+            )
+            raw_text = str(raw_text or "")
+            parsed_results = parse_test_results(extraction)
         except Exception as exc:  # pragma: no cover - defensive logging
             temp_path.unlink(missing_ok=True)
             return _json_error(f"PDF analizi başarısız oldu: {exc}", 500)
         finally:
             temp_path.unlink(missing_ok=True)
 
-        report_type_key, report_type_label = infer_report_type(text, filename)
+        report_type_key, report_type_label = infer_report_type(raw_text, filename)
         processed_files += 1
         total_tests = len(parsed_results)
         passed_tests = sum(1 for result in parsed_results if result.get("status") == "PASS")
@@ -1421,7 +1431,7 @@ def analyze_files_with_ai():
             total_tests=total_tests,
             passed_tests=passed_tests,
             failed_tests=failed_tests,
-            raw_text=text,
+            raw_text=raw_text,
             failure_details=failure_details,
         )
 
@@ -1432,7 +1442,7 @@ def analyze_files_with_ai():
         )
 
         fallback_sections = _build_structured_sections_from_text(
-            text,
+            raw_text,
             total_tests,
             passed_tests,
             failed_tests,
