@@ -11,9 +11,24 @@ except ImportError:  # pragma: no cover
     from pdf_section_analyzer import detect_subsections, identify_section_language  # type: ignore
 
 
-def parse_key_value_pairs(text: str) -> Dict[str, str]:
+def _ensure_text_string(text_or_dict: object) -> str:
+    """Return a plain string regardless of whether text arrives as dict or str."""
+
+    if isinstance(text_or_dict, dict):
+        structured = text_or_dict.get("structured_text")
+        if structured:
+            return str(structured)
+        fallback = text_or_dict.get("text")
+        if fallback:
+            return str(fallback)
+        return ""
+    return str(text_or_dict or "")
+
+
+def parse_key_value_pairs(text: str | dict) -> Dict[str, str]:
     """Extract key-value pairs from raw text using flexible patterns."""
 
+    text = _ensure_text_string(text)
     if not text:
         return {}
 
@@ -39,10 +54,10 @@ def parse_key_value_pairs(text: str) -> Dict[str, str]:
     return pairs
 
 
-def parse_test_conditions_structured(text: str) -> Dict[str, object]:
+def parse_test_conditions_structured(text: str | dict) -> Dict[str, object]:
     """Parse a test conditions block into structured data."""
 
-    cleaned = (text or "").strip()
+    cleaned = _ensure_text_string(text).strip()
     if not cleaned:
         return {"raw_text": ""}
 

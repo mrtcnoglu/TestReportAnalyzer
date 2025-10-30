@@ -47,13 +47,28 @@ class SectionMarker:
     heading: str
 
 
+def _ensure_text_string(text_or_dict: object) -> str:
+    """Return a plain string from either raw text or extraction dict results."""
+
+    if isinstance(text_or_dict, dict):
+        structured = text_or_dict.get("structured_text")
+        if structured:
+            return str(structured)
+        fallback = text_or_dict.get("text")
+        if fallback:
+            return str(fallback)
+        return ""
+    return str(text_or_dict or "")
+
+
 def _compile_heading_patterns(patterns: Iterable[str]) -> str:
     escaped = [f"(?:{pattern})" for pattern in patterns]
     return r"|".join(escaped)
 
 
-def _iter_section_markers(text: str) -> List[SectionMarker]:
+def _iter_section_markers(text: str | dict) -> List[SectionMarker]:
     markers: List[SectionMarker] = []
+    text = _ensure_text_string(text)
     if not text:
         return markers
 
@@ -78,9 +93,10 @@ def _iter_section_markers(text: str) -> List[SectionMarker]:
     return markers
 
 
-def extract_section(text: str, start_pattern: str, end_pattern: Optional[str] = None) -> str:
+def extract_section(text: str | dict, start_pattern: str, end_pattern: Optional[str] = None) -> str:
     """Extract a section using explicit start and optional end regex patterns."""
 
+    text = _ensure_text_string(text)
     if not text:
         return ""
 
@@ -104,9 +120,10 @@ def extract_section(text: str, start_pattern: str, end_pattern: Optional[str] = 
     return text[start_index:end_index].strip()
 
 
-def identify_section_language(text: str) -> str:
+def identify_section_language(text: str | dict) -> str:
     """Best-effort language detection based on known section headings."""
 
+    text = _ensure_text_string(text)
     if not text:
         return "tr"
 
@@ -129,9 +146,10 @@ def identify_section_language(text: str) -> str:
     return best_language
 
 
-def detect_sections(text: str) -> Dict[str, str]:
+def detect_sections(text: str | dict) -> Dict[str, str]:
     """Detect major sections of a PDF report and return their contents."""
 
+    text = _ensure_text_string(text)
     sections = {
         "header": "",
         "summary": "",
@@ -193,9 +211,10 @@ def detect_sections(text: str) -> Dict[str, str]:
     return sections
 
 
-def detect_subsections(text: str) -> Dict[str, str]:
+def detect_subsections(text: str | dict) -> Dict[str, str]:
     """Detect known subsections within a larger section text."""
 
+    text = _ensure_text_string(text)
     if not text:
         return {}
 
