@@ -2,7 +2,15 @@
 from __future__ import annotations
 
 import os
+import logging
 from pathlib import Path
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 
 from flask import Flask
 from flask_cors import CORS

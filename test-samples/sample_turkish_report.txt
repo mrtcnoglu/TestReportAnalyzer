@@ -1,0 +1,35 @@
+Test Raporu - 2025-10-30
+
+Proje: E-Ticaret Sitesi Test Otomasyonu
+Test Takımı: QA Team
+
+===========================================
+Test Sonuçları
+===========================================
+
+Test 1: Kullanıcı Girişi
+Durum: Başarılı
+Süre: 1.2s
+
+Test 2: Sepete Ürün Ekleme
+Durum: Başarılı  
+Süre: 0.8s
+
+Test 3: Ödeme İşlemi
+Durum: Başarısız
+Hata: Kredi kartı doğrulama servisi yanıt vermiyor (timeout 5000ms)
+
+Test 4: Sipariş Onayı
+Durum: Başarısız
+Hata: NullPointerException at OrderService.java:145
+
+Test 5: Email Bildirimi
+Durum: Geçti
+Süre: 2.1s
+
+===========================================
+Özet
+===========================================
+Toplam Test: 5
+Başarılı: 3
+Başarısız: 2
