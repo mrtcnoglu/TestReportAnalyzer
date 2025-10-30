@@ -12,6 +12,30 @@ except ImportError:  # pragma: no cover
     from section_patterns import SECTION_PATTERNS  # type: ignore
 
 
+SUBSECTION_PATTERNS: Dict[str, Dict[str, str]] = {
+    "sled_deceleration": {
+        "de": r"Schlittenverzögerung:",
+        "en": r"Sled\s+deceleration:",
+        "tr": r"Kızak\s+(?:gecikmesi|yavaşlaması):",
+    },
+    "load_values": {
+        "de": r"Belastungswerte:",
+        "en": r"Load\s+values:",
+        "tr": r"Yük\s+değerleri:",
+    },
+    "photo_documentation": {
+        "de": r"Fotodokumentation:",
+        "en": r"Photo\s+documentation:",
+        "tr": r"Fotoğraf\s+dokümantasyonu:",
+    },
+    "test_setup": {
+        "de": r"Abb\.\s*\d+:\s*(?:Aufbau|Setup)",
+        "en": r"Fig\.\s*\d+:\s*(?:Setup|Configuration)",
+        "tr": r"Şekil\s*\d+:\s*(?:Kurulum|Yapılandırma)",
+    },
+}
+
+
 @dataclass(frozen=True)
 class SectionMarker:
     """Represents a detected section heading inside the PDF text."""
@@ -167,3 +191,51 @@ def detect_sections(text: str) -> Dict[str, str]:
         sections["summary"] = sections["header"]
 
     return sections
+
+
+def detect_subsections(text: str) -> Dict[str, str]:
+    """Detect known subsections within a larger section text."""
+
+    if not text:
+        return {}
+
+    language = identify_section_language(text)
+    markers: List[SectionMarker] = []
+
+    for key, language_map in SUBSECTION_PATTERNS.items():
+        pattern = language_map.get(language) or language_map.get("en")
+        if not pattern:
+            continue
+        try:
+            regex = re.compile(pattern, re.IGNORECASE)
+        except re.error:
+            continue
+        for match in regex.finditer(text):
+            markers.append(
+                SectionMarker(
+                    start=match.start(),
+                    end=match.end(),
+                    section=key,
+                    language=language,
+                    heading=match.group(0),
+                )
+            )
+
+    if not markers:
+        return {}
+
+    markers.sort(key=lambda item: item.start)
+    subsections: Dict[str, str] = {}
+
+    for index, marker in enumerate(markers):
+        start_index = marker.start
+        end_index = len(text)
+        for next_marker in markers[index + 1 :]:
+            if next_marker.start > marker.start:
+                end_index = next_marker.start
+                break
+        content = text[start_index:end_index].strip()
+        if content:
+            subsections[marker.section] = content
+
+    return subsections

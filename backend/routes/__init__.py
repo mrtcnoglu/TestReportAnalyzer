@@ -958,7 +958,12 @@ def upload_report():
         )
 
     database.update_report_stats(report_id, total_tests, passed_tests, failed_tests)
-    database.update_report_comprehensive_analysis(report_id, comprehensive_analysis)
+    database.update_report_comprehensive_analysis(
+        report_id,
+        comprehensive_analysis,
+        structured_data=analysis_result.get("structured_data"),
+        tables=analysis_result.get("tables"),
+    )
 
     report = database.get_report_by_id(report_id)
     if report is not None:
@@ -1030,6 +1035,8 @@ def get_detailed_report(report_id: int):
                 "failed": report.get("failed_tests", 0),
             },
             "detailed_analysis": detailed_analysis,
+            "structured_data": report.get("structured_data"),
+            "table_count": report.get("table_count", 0),
         }
     )
 
@@ -1084,8 +1091,18 @@ def compare_reports():
         return _json_error("Karşılaştırma için PDF dosyalarından biri bulunamadı.", 404)
 
     try:
-        first_text = extract_text_from_pdf(first_path)
-        second_text = extract_text_from_pdf(second_path)
+        first_extraction = extract_text_from_pdf(first_path)
+        second_extraction = extract_text_from_pdf(second_path)
+        first_text = (
+            first_extraction.get("structured_text")
+            or first_extraction.get("text")
+            or ""
+        )
+        second_text = (
+            second_extraction.get("structured_text")
+            or second_extraction.get("text")
+            or ""
+        )
     except FileNotFoundError:
         return _json_error("Karşılaştırma için PDF dosyalarından biri bulunamadı.", 404)
     except Exception as exc:  # pragma: no cover - defensive
@@ -1178,6 +1195,32 @@ def compare_reports():
     }
 
     return jsonify(response_payload)
+
+
+@reports_bp.route("/reports/<int:report_id>/tables", methods=["GET"])
+def get_report_tables(report_id: int):
+    report = database.get_report_by_id(report_id)
+    if not report:
+        return _json_error("Report not found.", 404)
+
+    pdf_path = Path(report.get("pdf_path") or "")
+    if not pdf_path.exists():
+        return _json_error("PDF file is not available on the server.", 404)
+
+    try:
+        extraction = extract_text_from_pdf(pdf_path)
+    except Exception as exc:  # pragma: no cover - defensive
+        return _json_error(f"Tablo verileri alınamadı: {exc}", 500)
+
+    tables = extraction.get("tables") or []
+
+    return jsonify(
+        {
+            "report_id": report_id,
+            "table_count": len(tables),
+            "tables": tables,
+        }
+    )
 
 
 @reports_bp.route("/reports/<int:report_id>/failures", methods=["GET"])

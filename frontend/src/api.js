@@ -40,6 +40,11 @@ export const getFailedTests = async (id) => {
   return response.data.failures;
 };
 
+export const getReportTables = async (id) => {
+  const response = await client.get(`/reports/${id}/tables`);
+  return response.data;
+};
+
 export const deleteReport = async (id) => {
   const response = await client.delete(`/reports/${id}`);
   return response.data;

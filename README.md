@@ -46,6 +46,53 @@ Uygulama, test raporlarını **bölüm bölüm** inceleyerek AI destekli zengin 
 }
 ```
 
+### Tablo ve Grafik Desteği
+
+Sistem, PDF raporlarındaki tabloları otomatik olarak çıkarır ve analiz eder:
+
+- ✅ Grafik verilerini tablo formatında okur
+- ✅ "Belastungswerte" (Yük Değerleri) tablolarını parse eder
+- ✅ Kopfbeschl., Brustbeschl. gibi ölçümleri tanır
+- ✅ Sayısal değerleri AI akışına dahil eder
+
+### Yapılandırılmış Veri Parse
+
+PDF'deki anahtar-değer yapıları otomatik olarak tanımlanır ve JSON formatına dönüştürülür:
+
+**Örnek:**
+
+```
+Test conditions: UN-R80
+Date: 10.02.2022
+Test vehicle: MAN LE MU
+```
+
+**Üretilen veri:**
+
+```json
+{
+  "standard": "UN-R80",
+  "date": "10.02.2022",
+  "test_vehicle": "MAN LE MU"
+}
+```
+
+### Alt Bölüm Tanıma
+
+Test koşullarındaki alt başlıklar tespit edilerek bölümler halinde sunulur:
+
+- Schlittenverzögerung (Kızak gecikmesi)
+- Belastungswerte (Yük değerleri)
+- Fotodokumentation (Fotoğraf dokümantasyonu)
+
+### Çoklu Dil Desteği
+
+Aynı anda birden fazla dilde alt başlık tanıma ve veri çıkarma gerçekleştirilir:
+
+- 🇩🇪 Almanca (Testbedingungen, Belastungswerte)
+- 🇬🇧 İngilizce (Test Conditions, Load Values)
+- 🇹🇷 Türkçe (Test Koşulları, Yük Değerleri)
+
 ## Teknoloji Stack
 - **Backend:** Python 3, Flask, SQLite, pdfplumber / PyPDF2, python-dateutil
 - **Frontend:** React, React Router, Axios, React Scripts

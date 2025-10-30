@@ -11,7 +11,9 @@ CREATE TABLE IF NOT EXISTS reports (
     graphs_description TEXT,
     detailed_results TEXT,
     improvement_suggestions TEXT,
-    analysis_language TEXT DEFAULT 'tr'
+    analysis_language TEXT DEFAULT 'tr',
+    structured_data TEXT,
+    table_count INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS test_results (

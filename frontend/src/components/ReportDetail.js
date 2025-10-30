@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getDetailedReport, getFailedTests, getReportById } from "../api";
+import {
+  getDetailedReport,
+  getFailedTests,
+  getReportById,
+  getReportTables,
+} from "../api";
 import TestList from "./TestList";
 
 const ReportDetail = () => {
@@ -11,6 +16,9 @@ const ReportDetail = () => {
   const [detailedAnalysis, setDetailedAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [tablesLoading, setTablesLoading] = useState(false);
+  const [tablesError, setTablesError] = useState(null);
 
   useEffect(() => {
     const loadReport = async () => {
@@ -33,6 +41,31 @@ const ReportDetail = () => {
 
     loadReport();
   }, [id]);
+
+  const handleFetchTables = async (reportId) => {
+    if (!reportId || tablesLoading) {
+      return;
+    }
+    setTablesError(null);
+    setTablesLoading(true);
+    try {
+      const tableResponse = await getReportTables(reportId);
+      setTables(tableResponse.tables || []);
+    } catch (fetchError) {
+      setTablesError("Tablo verileri alınamadı.");
+    } finally {
+      setTablesLoading(false);
+    }
+  };
+
+  let parsedStructuredData = null;
+  if (report?.structured_data) {
+    try {
+      parsedStructuredData = JSON.parse(report.structured_data);
+    } catch (parseError) {
+      parsedStructuredData = null;
+    }
+  }
 
   if (loading) {
     return <p>Yükleniyor...</p>;
@@ -68,6 +101,57 @@ const ReportDetail = () => {
         </div>
         <Link to="/">← Listeye dön</Link>
       </div>
+
+      {report.table_count > 0 && (
+        <div className="analysis-card">
+          <h3>📊 Tablo Verileri</h3>
+          <p>{report.table_count} adet tablo bulundu ve analiz edildi.</p>
+          <button
+            className="button"
+            onClick={() => handleFetchTables(report.id)}
+            disabled={tablesLoading}
+          >
+            {tablesLoading ? "Yükleniyor..." : "Tabloları Göster"}
+          </button>
+          {tablesError && <p className="error-text">{tablesError}</p>}
+          {tables.length > 0 && (
+            <div className="table-preview-grid">
+              {tables.map((table, index) => (
+                <div key={`${table.page}-${table.table_num}-${index}`} className="table-preview">
+                  <h4>
+                    Sayfa {table.page}, Tablo {table.table_num}
+                  </h4>
+                  <table>
+                    <tbody>
+                      {(table.data || []).slice(0, 5).map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                          {(row || []).map((cell, cellIndex) => (
+                            <td key={cellIndex}>{cell || ""}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {parsedStructuredData && (
+        <div className="analysis-card">
+          <h3>📋 Yapılandırılmış Veriler</h3>
+          <div className="key-value-grid">
+            {Object.entries(parsedStructuredData).map(([key, value]) => (
+              <div key={key} className="key-value-row">
+                <span className="key">{key}:</span>
+                <span className="value">{String(value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {detailedAnalysis && (
         <div className="analysis-grid">

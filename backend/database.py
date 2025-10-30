@@ -1,6 +1,7 @@
 """Database utilities for the TestReportAnalyzer backend."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -43,6 +44,8 @@ def init_db() -> None:
             ("detailed_results", "TEXT"),
             ("improvement_suggestions", "TEXT"),
             ("analysis_language", "TEXT DEFAULT 'tr'"),
+            ("structured_data", "TEXT"),
+            ("table_count", "INTEGER DEFAULT 0"),
         ):
             try:
                 conn.execute(f"ALTER TABLE reports ADD COLUMN {column} {definition}")
@@ -177,7 +180,9 @@ def get_report_by_id(report_id: int) -> Optional[Dict]:
                 graphs_description,
                 detailed_results,
                 improvement_suggestions,
-                analysis_language
+                analysis_language,
+                structured_data,
+                table_count
             FROM reports
             WHERE id = ?
             """,
@@ -187,7 +192,12 @@ def get_report_by_id(report_id: int) -> Optional[Dict]:
         return dict(row) if row else None
 
 
-def update_report_comprehensive_analysis(report_id: int, analysis: Dict[str, str]) -> None:
+def update_report_comprehensive_analysis(
+    report_id: int,
+    analysis: Dict[str, str],
+    structured_data: Optional[Dict[str, object]] = None,
+    tables: Optional[List[Dict[str, object]]] = None,
+) -> None:
     """Persist comprehensive analysis columns for a report."""
 
     if not analysis:
@@ -202,7 +212,9 @@ def update_report_comprehensive_analysis(report_id: int, analysis: Dict[str, str
                 graphs_description = ?,
                 detailed_results = ?,
                 improvement_suggestions = ?,
-                analysis_language = COALESCE(?, analysis_language)
+                analysis_language = COALESCE(?, analysis_language),
+                structured_data = ?,
+                table_count = ?
             WHERE id = ?
             """,
             (
@@ -211,6 +223,8 @@ def update_report_comprehensive_analysis(report_id: int, analysis: Dict[str, str
                 analysis.get("results"),
                 analysis.get("improvements"),
                 analysis.get("analysis_language"),
+                json.dumps(structured_data) if structured_data else None,
+                len(tables) if tables else 0,
                 report_id,
             ),
         )
