@@ -215,7 +215,7 @@ class AIAnalyzer:
 
         response = client.messages.create(
             model=self.claude_model,
-            max_output_tokens=max_tokens or self.max_tokens,
+            max_tokens=max_tokens or self.max_tokens,
             temperature=0,
             messages=[{"role": "user", "content": prompt}],
         )
