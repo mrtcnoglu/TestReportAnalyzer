@@ -30,6 +30,15 @@ const App = () => {
   const [analysisEngine, setAnalysisEngine] = useState("chatgpt");
   const [searchQuery, setSearchQuery] = useState("");
   const [analysisHistory, setAnalysisHistory] = useState([]);
+  const [isAnalysisProcessing, setIsAnalysisProcessing] = useState(false);
+
+  const handleAnalysisProcessingStart = useCallback(() => {
+    setIsAnalysisProcessing(true);
+  }, []);
+
+  const handleAnalysisProcessingEnd = useCallback(() => {
+    setIsAnalysisProcessing(false);
+  }, []);
   const navigate = useNavigate();
 
   const fetchReports = async () => {
@@ -225,6 +234,9 @@ const App = () => {
                   recentAnalyses={recentAnalyses}
                   onAnalysisComplete={handleAnalysisComplete}
                   onClearAnalyses={clearAnalysisHistory}
+                  isAnalysisProcessing={isAnalysisProcessing}
+                  onAnalysisProcessingStart={handleAnalysisProcessingStart}
+                  onAnalysisProcessingEnd={handleAnalysisProcessingEnd}
                 />
               }
             />
