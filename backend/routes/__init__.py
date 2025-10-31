@@ -1054,13 +1054,49 @@ def list_reports():
 
 @reports_bp.route("/reports/<int:report_id>", methods=["GET"])
 def get_report(report_id: int):
-    report = database.get_report_by_id(report_id)
-    if not report:
-        return _json_error("Report not found.", 404)
+    """Rapor detayını getir"""
 
-    results = database.get_test_results(report_id)
-    report["test_type_label"] = _resolve_report_type_label(report.get("test_type"))
-    return jsonify({"report": report, "results": results})
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        report = database.get_report_by_id(report_id)
+
+        if not report:
+            return _json_error("Report not found.", 404)
+
+        tests = database.get_test_results(report_id) or []
+
+        detailed_analysis = {
+            "test_conditions": report.get("test_conditions_summary", ""),
+            "graphs": report.get("graphs_description", ""),
+            "results": report.get("detailed_results", ""),
+            "improvements": report.get("improvement_suggestions", ""),
+        }
+
+        logger.info("Rapor %s getiriliyor:", report_id)
+        logger.info("  Test conditions: %s karakter", len(detailed_analysis["test_conditions"]))
+        logger.info("  Graphs: %s karakter", len(detailed_analysis["graphs"]))
+
+        response = {
+            "report": {
+                "id": report.get("id"),
+                "filename": report.get("filename"),
+                "upload_date": report.get("upload_date"),
+                "total_tests": report.get("total_tests", 0),
+                "passed_tests": report.get("passed_tests", 0),
+                "failed_tests": report.get("failed_tests", 0),
+                "tests": tests,
+            },
+            "detailed_analysis": detailed_analysis,
+        }
+
+        return jsonify(response)
+
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error("Rapor getirme hatası: %s", exc, exc_info=True)
+        return _json_error(str(exc), 500)
 
 
 @reports_bp.route("/reports/<int:report_id>/detailed", methods=["GET"])

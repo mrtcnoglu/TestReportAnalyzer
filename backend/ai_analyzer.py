@@ -927,41 +927,52 @@ Antwort auf Deutsch, maximal 200 Wörter.
 def analyze_test_conditions(
     text: str,
     structured_data: Optional[Dict[str, object]] = None,
+    format_type: str = "generic",
     language: str = "tr",
 ) -> str:
-    """Test koşullarını AI ile analiz et."""
+    """Test koşulları analizi - Format-aware"""
 
-    _ = _normalise_language(language)  # kept for API compatibility
-    formatted_text = ""
+    raw_text = (text or "").strip()
+    structured_snippet = ""
 
     if structured_data:
-        formatted_text = format_structured_data_for_ai(structured_data) or ""
+        try:
+            structured_snippet = format_structured_data_for_ai(structured_data) or ""
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("structured_data format error: %s", exc)
 
-    if not formatted_text:
-        formatted_text = (text or "").strip()
+    combined_text = raw_text
+    if structured_snippet and structured_snippet not in combined_text:
+        combined_text = f"{raw_text}\n\n{structured_snippet}".strip()
 
-    if not formatted_text or len(formatted_text) < 50:
-        logger.warning("analyze_test_conditions: Yetersiz text, analiz atlanıyor")
-        return "Test koşulları hakkında yeterli bilgi bulunamadı."
+    if not combined_text or len(combined_text) < 30:
+        return "Test koşulları hakkında yeterli bilgi yok."
 
-    prompt = f"""Aşağıdaki test koşullarını analiz et ve KISA özet çıkar (Türkçe, maks. 150 kelime):
+    if format_type == "kielt_format":
+        prompt = f"""Bu TÜV test raporunun koşullarını ÖZ OL (Türkçe, maks. 100 kelime):
 
-{formatted_text[:2000]}
+{combined_text[:1200]}
 
-Belirt:
-1. Test standardı (UN-R, ECE-R)
-2. Test aracı/cihazı
-3. Test tarihi
-4. Ölçüm yöntemi
+Sadece şunları yaz:
+- Test standardı (UN-R veya ECE-R)
+- Hangi araç test edildi?
+- Test tarihi
+- Kullanılan ölçüm sistemi
 
-Örnek format:
-"UN-R80 standardına göre 10.02.2022 tarihinde MAN LE MU aracında test yapılmıştır.
-INTERLINE koltuğu test edilmiş, MINIdau ile ölçüm alınmıştır."
+ÖRNEK:
+"UN-R80 standardına göre 11.02.2022 tarihinde MAN LE kamyonunda koltuk testi yapılmıştır. KIEL INTERLINE R LE koltuğu test edilmiş, MINIdau ölçüm sistemi kullanılmıştır."
 
-SADECE ÖZETİ VER!
+SADECE ÖZETİ YAZ, uzun açıklama yapma!
+"""
+    else:
+        prompt = f"""Test koşullarını özetle (Türkçe, maks. 100 kelime):
+
+{combined_text[:1200]}
+
+Test standardı, test edilen cihaz, tarih ve ölçüm yöntemini belirt.
 """
 
-    logger.info("AI'ya test koşulları gönderiliyor...")
+    logger.info("AI'ya test koşulları gönderiliyor (format: %s)", format_type)
 
     analyzer = ai_analyzer
     analyzer._refresh_configuration()
@@ -969,116 +980,140 @@ SADECE ÖZETİ VER!
 
     try:
         if provider == "none":
-            return _extract_basic_info(formatted_text)
+            return _extract_basic_info(combined_text)
 
         if provider in {"claude", "both"} and analyzer.claude_client:
             try:
-                response = _call_claude_for_analysis(prompt)
-                if response:
-                    return response
+                result = _call_claude_for_analysis(prompt)
+                if result and len(result) > 40:
+                    return result
             except Exception as exc:
                 logger.error("Claude API hatası: %s", exc, exc_info=True)
                 if provider == "claude":
-                    return _extract_basic_info(formatted_text)
+                    return _extract_basic_info(combined_text)
 
         if provider in {"chatgpt", "both"} and analyzer.openai_client:
             try:
-                response = _call_openai_for_analysis(prompt)
-                if response:
-                    return response
+                result = _call_openai_for_analysis(prompt)
+                if result and len(result) > 40:
+                    return result
             except Exception as exc:
                 logger.error("OpenAI API hatası: %s", exc, exc_info=True)
                 if provider == "chatgpt":
-                    return _extract_basic_info(formatted_text)
+                    return _extract_basic_info(combined_text)
 
-        return _extract_basic_info(formatted_text)
+        return _extract_basic_info(combined_text)
 
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.error("AI analiz hatası: %s", exc, exc_info=True)
-        return _extract_basic_info(formatted_text)
+        logger.error("Test koşulları analiz hatası: %s", exc)
+        return _extract_basic_info(combined_text)
 
 
 def analyze_graphs(
     text: str,
     tables: Optional[Sequence[Dict[str, object]]] = None,
+    measurement_params: Optional[Sequence[Dict[str, object]]] = None,
     language: str = "tr",
 ) -> str:
-    """Grafik/tablo verilerini analiz et."""
+    """Grafik analizi - Measurement params ile İYİLEŞTİRİLMİŞ"""
 
-    _ = _normalise_language(language)
     cleaned_text = (text or "").strip()
     tables = list(tables or [])
+    measurement_params = list(measurement_params or [])
 
-    has_tables = bool(tables)
-    has_text = bool(cleaned_text and len(cleaned_text) > 50)
+    if not cleaned_text and not tables and not measurement_params:
+        return "Grafik veya ölçüm verisi bulunamadı."
 
-    if not has_tables and not has_text:
-        logger.warning("Grafik analizi için veri yok")
-        return "Grafik veya tablo verisi bulunamadı."
+    content_parts: List[str] = []
 
-    content = cleaned_text
-    if has_tables:
-        content = content + "\n\n=== TABLO VERİLERİ ===\n" if content else "=== TABLO VERİLERİ ===\n"
-        for table_info in tables[:3]:
+    if measurement_params:
+        content_parts.append("=== ÖLÇÜM PARAMETRELERİ ===")
+        for param in measurement_params:
+            name = param.get("name", "Parametre")
+            unit = param.get("unit", "")
+            values = param.get("values") or []
+            values_str = ", ".join(str(v) for v in values[:5])
+            if unit:
+                content_parts.append(f"- {name} [{unit}]: {values_str}")
+            else:
+                content_parts.append(f"- {name}: {values_str}")
+        content_parts.append("")
+
+    if cleaned_text:
+        content_parts.append("=== METİN İÇERİĞİ ===")
+        content_parts.append(cleaned_text[:1000])
+        content_parts.append("")
+
+    if tables:
+        content_parts.append("=== TABLO VERİLERİ ===")
+        for table_info in tables[:2]:
             page = table_info.get("page")
             table_num = table_info.get("table_num")
-            content += f"\nSayfa {page}, Tablo {table_num}:\n"
-            for row in (table_info.get("data") or [])[:8]:
-                row_values = [str(cell)[:30] if cell else "-" for cell in row]
-                content += "  | ".join(row_values) + "\n"
+            content_parts.append(f"Sayfa {page}, Tablo {table_num}:")
+            for row in (table_info.get("data") or [])[:5]:
+                row_text = "  | ".join(str(cell)[:20] if cell else "-" for cell in row)
+                content_parts.append(row_text)
 
-    prompt = f"""Bu bölümdeki grafik/tablo verilerini analiz et (Türkçe, maks. 150 kelime):
+    content = "\n".join(content_parts)
 
-{content[:2500]}
+    if not content.strip():
+        return "Grafik veya ölçüm verisi bulunamadı."
 
-Belirt:
-1. Hangi parametreler ölçülmüş? (örn: Kopfbeschl., Brustbeschl.)
-2. Ölçüm birimleri (g, kN, ms)
+    prompt = f"""Bu test raporundaki ÖLÇÜM VERİLERİNİ analiz et (Türkçe, maksimum 150 kelime):
+
+{content[:2000]}
+
+GÖREVİN - Şunları YAZ:
+1. Hangi parametreler ölçülmüş? (Örn: Kopfbeschl., Brustbeschl., Oberschenkelkraft)
+2. Her parametrenin birimi nedir? (g, kN, ms)
 3. Değer aralıkları (min-max)
 
-Örnek:
+ÖRNEK YANIT:
 "Baş ivmesi (Kopfbeschl.) 45-52 g aralığında ölçülmüştür.
-Göğüs ivmesi (Brustbeschl.) 38-44 g.
-Uyluk kuvveti 3.2-4.5 kN aralığındadır."
+Göğüs ivmesi (Brustbeschl.) 38-44 g aralığındadır.
+Uyluk kuvveti (Oberschenkelkraft) 3.2-4.5 kN seviyesindedir."
 
-SADECE ÖZETİ VER!
+ÖNEMLİ:
+- SADECE ÖZETİ YAZ
+- "Grafik bulunamadı" YAZMA, yukarıdaki verileri ÖZETLE
+- Kısa ve net ol
 """
 
-    logger.info("AI'ya grafik verileri gönderiliyor...")
+    logger.info("AI'ya grafik verisi gönderiliyor (%s karakter)", len(content))
 
     analyzer = ai_analyzer
     analyzer._refresh_configuration()
     provider = (analyzer.provider or "none").lower()
 
     try:
-        if provider == "none":
-            return _extract_graph_info(content, tables)
+        if provider == "none" or not measurement_params:
+            return _extract_graph_info_enhanced(content, measurement_params)
 
         if provider in {"claude", "both"} and analyzer.claude_client:
             try:
-                response = _call_claude_for_analysis(prompt)
-                if response:
-                    return response
+                result = _call_claude_for_analysis(prompt)
+                if result and len(result) > 50:
+                    return result
             except Exception as exc:
                 logger.error("Claude API hatası: %s", exc, exc_info=True)
                 if provider == "claude":
-                    return _extract_graph_info(content, tables)
+                    return _extract_graph_info_enhanced(content, measurement_params)
 
         if provider in {"chatgpt", "both"} and analyzer.openai_client:
             try:
-                response = _call_openai_for_analysis(prompt)
-                if response:
-                    return response
+                result = _call_openai_for_analysis(prompt)
+                if result and len(result) > 50:
+                    return result
             except Exception as exc:
                 logger.error("OpenAI API hatası: %s", exc, exc_info=True)
                 if provider == "chatgpt":
-                    return _extract_graph_info(content, tables)
+                    return _extract_graph_info_enhanced(content, measurement_params)
 
-        return _extract_graph_info(content, tables)
+        return _extract_graph_info_enhanced(content, measurement_params)
 
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.error("Grafik analiz hatası: %s", exc, exc_info=True)
-        return _extract_graph_info(content, tables)
+        return _extract_graph_info_enhanced(content, measurement_params)
 
 
 def _call_claude_for_analysis(prompt: str) -> str:
@@ -1171,34 +1206,32 @@ def _extract_basic_info(text: str) -> str:
     return "Test koşulları parse edildi ancak detay çıkarılamadı."
 
 
-def _extract_graph_info(text: str, tables: Sequence[Dict[str, object]]) -> str:
-    """Fallback: provide lightweight information about graph/table data."""
+def _extract_graph_info_enhanced(
+    content: str,
+    measurement_params: Sequence[Dict[str, object]] | None,
+) -> str:
+    """Gelişmiş fallback - measurement params kullan"""
 
-    info: List[str] = []
-    tables = list(tables or [])
+    measurement_params = list(measurement_params or [])
+    if measurement_params:
+        parts: List[str] = []
+        parts.append(f"{len(measurement_params)} ölçüm parametresi tespit edildi:")
+        for param in measurement_params[:5]:
+            name = param.get("name", "Parametre")
+            unit = param.get("unit", "")
+            values = param.get("values") or []
+            values_preview = ", ".join(str(v) for v in values[:3])
+            if unit:
+                parts.append(f"- {name}: {values_preview} {unit}")
+            else:
+                parts.append(f"- {name}: {values_preview}")
+        return " ".join(parts)
 
-    if tables:
-        info.append(f"{len(tables)} adet tablo bulundu.")
-        first_table = tables[0].get("data") if isinstance(tables[0], dict) else None
-        if first_table:
-            first_row = first_table[0] if first_table else []
-            params = [str(cell).strip() for cell in first_row if cell]
-            if params:
-                info.append(f"Parametreler: {', '.join(params[:5])}")
+    tables_found = re.findall(r"=== SAYFA \d+ - TABLO \d+ ===", content or "")
+    if tables_found:
+        return f"{len(tables_found)} tablo bölümü bulundu, parametreler çıkarılamadı."
 
-    params_found = re.findall(
-        r"(Kopfbeschl\.|Brustbeschl\.|Oberschenkelkraft)",
-        text or "",
-        re.IGNORECASE,
-    )
-    if params_found:
-        unique_params = ", ".join(sorted(set(param.strip() for param in params_found)))
-        info.append(f"Tespit edilen ölçümler: {unique_params}")
-
-    if info:
-        return " ".join(info)
-
-    return "Grafik verileri tespit edildi ancak detay çıkarılamadı."
+    return "Ölçüm verileri parse edildi ancak detay çıkarılamadı."
 
 
 def analyze_results(text: str, language: str = "tr") -> str:

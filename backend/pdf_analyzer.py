@@ -12,33 +12,31 @@ from PyPDF2 import PdfReader
 try:  # pragma: no cover - allow execution both as package and script
     from .ai_analyzer import (
         ai_analyzer,
-        analyze_detailed_data,
         analyze_graphs,
         analyze_results,
         analyze_test_conditions,
         generate_comprehensive_report,
     )
-    from .pdf_section_analyzer import (
-        detect_sections,
-        detect_subsections,
-        identify_section_language,
+    from .pdf_format_detector import (
+        detect_pdf_format,
+        extract_measurement_params,
+        parse_kielt_format,
     )
-    from .structured_data_parser import parse_test_conditions_structured
+    from .pdf_section_analyzer import detect_sections
 except ImportError:  # pragma: no cover
     from ai_analyzer import (  # type: ignore
         ai_analyzer,
-        analyze_detailed_data,
         analyze_graphs,
         analyze_results,
         analyze_test_conditions,
         generate_comprehensive_report,
     )
-    from pdf_section_analyzer import (  # type: ignore
-        detect_sections,
-        detect_subsections,
-        identify_section_language,
+    from pdf_format_detector import (  # type: ignore
+        detect_pdf_format,
+        extract_measurement_params,
+        parse_kielt_format,
     )
-    from structured_data_parser import parse_test_conditions_structured  # type: ignore
+    from pdf_section_analyzer import detect_sections  # type: ignore
 
 PASS_PATTERN = r"(PASS|PASSED|SUCCESS|OK|✓|SUCCESSFUL|Başarılı|Geçti|BAŞARILI|GEÇTİ|Basarili|Gecti)"
 FAIL_PATTERN = r"(FAIL|FAILED|ERROR|EXCEPTION|✗|FAILURE|Başarısız|Kaldı|Hata|BAŞARISIZ|KALDI|HATA|Basarisiz|Kaldi)"
@@ -471,7 +469,7 @@ def parse_test_results(text: str | dict) -> List[Dict[str, str]]:
 
 
 def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
-    """Run a comprehensive analysis for a PDF by examining its sections individually."""
+    """PDF'i kapsamlı analiz et - Format Detection ile"""
 
     logger.info("\n%s", "=" * 70)
     logger.info("KAPSAMLI PDF ANALİZİ BAŞLADI")
@@ -479,161 +477,85 @@ def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
     logger.info("%s\n", "=" * 70)
 
     try:
-        logger.info("ADIM 1: Text ve Tablo Extraction")
         extraction_result = extract_text_from_pdf(pdf_path)
-        text = extraction_result.get("structured_text") or _ensure_text_string(extraction_result)
-        tables = extraction_result.get("tables") or []
+        text = extraction_result.get("structured_text", "")
+        tables = extraction_result.get("tables", [])
 
-        logger.info("  ✓ Text uzunluğu: %s karakter", len(text or ""))
-        logger.info("  ✓ Tablo sayısı: %s", len(tables))
-        if text:
-            logger.info("  ✓ İlk 200 karakter: %s", text[:200])
+        logger.info("Text: %s karakter, Tablo: %s", len(text), len(tables))
 
-        logger.info("\nADIM 2: Temel Test Parse")
+        pdf_format = detect_pdf_format(text)
+        logger.info("PDF Format: %s", pdf_format)
+
+        if pdf_format == "kielt_format":
+            logger.info("Kielt formatı tespit edildi, özel parse kullanılıyor...")
+            sections = parse_kielt_format(text)
+            measurement_params = extract_measurement_params(text)
+
+            logger.info("Kielt parse sonucu:")
+            logger.info("  - Test conditions: %s kar", len(sections.get("test_conditions", "")))
+            logger.info("  - Load values: %s kar", len(sections.get("load_values", "")))
+            logger.info("  - Measurement params: %s", len(measurement_params))
+        else:
+            logger.info("Generic format, standart parse kullanılıyor...")
+            sections = detect_sections(text)
+            measurement_params = []
+
         basic_results = parse_test_results(text)
-        logger.info("  ✓ Bulunan test sayısı: %s", len(basic_results))
 
-        logger.info("\nADIM 3: Bölüm Tanıma")
-        sections = detect_sections(text)
-        logger.info("  ✓ Tespit edilen bölüm sayısı: %s", len([v for v in sections.values() if v]))
-        for section_name, section_content in sections.items():
-            if section_content:
-                logger.info("    - %s: %s karakter", section_name, len(section_content))
+        analysis: Dict[str, str] = {}
 
-        if not sections or all(not value for value in sections.values()):
-            logger.warning("  ⚠ UYARI: Hiçbir bölüm tespit edilemedi!")
-            logger.info("  Text örneği (ilk 500 karakter):\n%s", (text or "")[:500])
-
-        language = identify_section_language(text)
-
-        logger.info("\nADIM 4: Yapılandırılmış Veri Parse")
-        structured_test_conditions: Optional[Dict[str, object]] = None
-        test_conditions_text = sections.get("test_conditions", "")
-        if test_conditions_text:
-            logger.info("  Test koşulları bölümü bulundu, parse ediliyor...")
-            structured_test_conditions = parse_test_conditions_structured(test_conditions_text) or {}
-            structured_test_conditions["tables"] = tables
-            logger.info("  ✓ Yapılandırılmış veri parse edildi")
+        logger.info("AI: Test koşulları analizi...")
+        if sections.get("test_conditions"):
+            analysis["test_conditions"] = analyze_test_conditions(
+                sections["test_conditions"],
+                structured_data=None,
+                format_type=pdf_format,
+            )
         else:
-            logger.warning("  ⚠ Test koşulları bölümü bulunamadı")
+            analysis["test_conditions"] = "Test koşulları bulunamadı."
 
-        logger.info("\nADIM 5: Alt Bölüm Tanıma")
-        if test_conditions_text:
-            subsections = detect_subsections(test_conditions_text)
-            logger.info("  ✓ Alt bölüm sayısı: %s", len(subsections))
-            for sub_name, sub_content in subsections.items():
-                logger.info("    - %s: %s karakter", sub_name, len(sub_content or ""))
-                if sub_content:
-                    sections[sub_name] = sub_content
+        logger.info("AI: Grafik analizi...")
+        if sections.get("load_values") or sections.get("tables_text") or measurement_params:
+            graph_content = f"{sections.get('load_values', '')}\n\n{sections.get('tables_text', '')}".strip()
+            analysis["graphs"] = analyze_graphs(
+                graph_content,
+                tables=tables,
+                measurement_params=measurement_params,
+            )
         else:
-            logger.warning("  ⚠ Alt bölüm tanıma atlandı (test_conditions yok)")
+            analysis["graphs"] = "Grafik veya ölçüm verisi bulunamadı."
 
-        logger.info("\nADIM 6: AI Analizi")
-        section_analyses: Dict[str, str] = {}
-
-        logger.info("  6.1 Test Koşulları Analizi...")
-        if structured_test_conditions:
-            try:
-                section_analyses["test_conditions"] = analyze_test_conditions(
-                    test_conditions_text,
-                    structured_data=structured_test_conditions,
-                    language=language,
-                )
-                logger.info(
-                    "  ✓ Test koşulları analiz edildi: %s karakter",
-                    len(section_analyses["test_conditions"] or ""),
-                )
-            except Exception as exc:
-                logger.error("  ✗ Test koşulları analiz hatası: %s", exc, exc_info=True)
-                section_analyses["test_conditions"] = f"Analiz hatası: {exc}"
+        if sections.get("results"):
+            analysis["results"] = analyze_results(sections["results"])
         else:
-            logger.warning("  ⚠ Test koşulları analizi atlandı (yapılandırılmış veri yok)")
-            section_analyses["test_conditions"] = "Test koşulları bölümü bulunamadı veya parse edilemedi."
+            analysis["results"] = "Sonuç bölümü bulunamadı."
 
-        logger.info("  6.2 Grafik/Tablo Analizi...")
-        graph_section = "\n".join(filter(None, [sections.get("graphs", ""), sections.get("load_values", "")]))
-        if graph_section.strip() or tables:
-            try:
-                section_analyses["graphs"] = analyze_graphs(
-                    graph_section or sections.get("graphs", ""),
-                    tables=tables,
-                    language=language,
-                )
-                logger.info(
-                    "  ✓ Grafikler analiz edildi: %s karakter",
-                    len(section_analyses["graphs"] or ""),
-                )
-            except Exception as exc:
-                logger.error("  ✗ Grafik analiz hatası: %s", exc, exc_info=True)
-                section_analyses["graphs"] = f"Analiz hatası: {exc}"
-        else:
-            logger.warning("  ⚠ Grafik bölümü bulunamadı")
-            section_analyses["graphs"] = "Grafik veya tablo verisi bulunamadı."
+        analysis.setdefault("analysis_language", "tr")
 
-        logger.info("  6.3 Sonuç Analizi...")
-        results_text = sections.get("results", "")
-        if results_text:
-            try:
-                section_analyses["results"] = analyze_results(results_text, language=language)
-                logger.info(
-                    "  ✓ Sonuçlar analiz edildi: %s karakter",
-                    len(section_analyses["results"] or ""),
-                )
-            except Exception as exc:
-                logger.error("  ✗ Sonuç analiz hatası: %s", exc, exc_info=True)
-                section_analyses["results"] = f"Analiz hatası: {exc}"
-        else:
-            logger.warning("  ⚠ Sonuç bölümü bulunamadı")
-            section_analyses["results"] = "Sonuç bölümü bulunamadı."
-
-        section_analyses.setdefault("summary", sections.get("summary", ""))
-        section_analyses.setdefault(
-            "detailed_data",
-            analyze_detailed_data(sections.get("detailed_data", ""), language=language),
-        )
-
-        logger.info("\nADIM 7: Kapsamlı Rapor Oluşturma")
-        comprehensive_report = generate_comprehensive_report(
-            section_analyses,
-            language=language,
-            header=sections.get("header", ""),
-        )
-        logger.info("  ✓ Rapor oluşturuldu")
-
-        total_tests = len(basic_results)
-        passed_tests = sum(1 for result in basic_results if result.get("status") == "PASS")
-        failed_tests = sum(1 for result in basic_results if result.get("status") == "FAIL")
-
-        metadata = {
-            "analysis_language": language,
-            "text_length": len(text or ""),
-            "table_count": len(tables),
-        }
-
-        logger.info("\n%s", "=" * 70)
-        logger.info("ANALİZ BAŞARIYLA TAMAMLANDI")
-        logger.info("%s\n", "=" * 70)
+        comprehensive_report = generate_comprehensive_report(analysis)
 
         return {
             "basic_stats": {
-                "total_tests": total_tests,
-                "passed": passed_tests,
-                "failed": failed_tests,
+                "total_tests": len(basic_results),
+                "passed": len([t for t in basic_results if t.get("status") == "PASS"]),
+                "failed": len([t for t in basic_results if t.get("status") == "FAIL"]),
                 "tests": basic_results,
             },
-            "sections": sections,
-            "section_analyses": section_analyses,
             "comprehensive_analysis": comprehensive_report,
-            "metadata": metadata,
-            "raw_text": text,
-            "structured_data": structured_test_conditions,
+            "sections": sections,
+            "structured_data": sections,
             "tables": tables,
+            "measurement_params": measurement_params,
+            "metadata": {
+                "text_length": len(text),
+                "table_count": len(tables),
+                "pdf_format": pdf_format,
+            },
+            "raw_text": text,
         }
 
-    except Exception as exc:  # pragma: no cover - defensive logging wrapper
-        logger.error("\n%s", "=" * 70)
-        logger.error("ANALİZ HATASI: %s", exc, exc_info=True)
-        logger.error("%s\n", "=" * 70)
+    except Exception as e:  # pragma: no cover
+        logger.error("Analiz hatası: %s", e, exc_info=True)
         raise
 
 
