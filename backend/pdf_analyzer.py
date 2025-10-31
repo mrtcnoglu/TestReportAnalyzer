@@ -469,93 +469,136 @@ def parse_test_results(text: str | dict) -> List[Dict[str, str]]:
 
 
 def analyze_pdf_comprehensive(pdf_path: Path | str) -> Dict[str, object]:
-    """PDF'i kapsamlı analiz et - Format Detection ile"""
+    """PDF'i kapsamlı analiz et"""
 
+    import logging
+    from pdf_format_detector import (
+        detect_pdf_format,
+        parse_kielt_format,
+        extract_measurement_params,
+    )
+
+    logger = logging.getLogger(__name__)
     logger.info("\n%s", "=" * 70)
-    logger.info("KAPSAMLI PDF ANALİZİ BAŞLADI")
-    logger.info("Dosya: %s", pdf_path)
-    logger.info("%s\n", "=" * 70)
+    logger.info("PDF ANALİZ BAŞLADI: %s", pdf_path)
+    logger.info("%s", "=" * 70)
 
     try:
+        # 1. Text extraction
+        logger.info("\n[1] Text Extraction")
         extraction_result = extract_text_from_pdf(pdf_path)
         text = extraction_result.get("structured_text", "")
         tables = extraction_result.get("tables", [])
 
-        logger.info("Text: %s karakter, Tablo: %s", len(text), len(tables))
+        logger.info("  Text: %s karakter", len(text))
+        logger.info("  Tablo: %s adet", len(tables))
+        logger.info("  İlk 300 karakter:\n%s", text[:300])
 
+        # 2. Format detection
+        logger.info("\n[2] Format Detection")
         pdf_format = detect_pdf_format(text)
-        logger.info("PDF Format: %s", pdf_format)
+        logger.info("  Format: %s", pdf_format)
 
+        # 3. Format'a özel parse
+        logger.info("\n[3] Format-Specific Parse")
         if pdf_format == "kielt_format":
-            logger.info("Kielt formatı tespit edildi, özel parse kullanılıyor...")
             sections = parse_kielt_format(text)
             measurement_params = extract_measurement_params(text)
 
-            logger.info("Kielt parse sonucu:")
-            logger.info("  - Test conditions: %s kar", len(sections.get("test_conditions", "")))
-            logger.info("  - Load values: %s kar", len(sections.get("load_values", "")))
-            logger.info("  - Measurement params: %s", len(measurement_params))
+            logger.info("  Kielt parse tamamlandı:")
+            logger.info("    - Bölüm sayısı: %s", len(sections))
+            for key, value in sections.items():
+                logger.info("      • %s: %s karakter", key, len(value) if value else 0)
+
+            logger.info("    - Measurement params: %s grup", len(measurement_params))
+            for param in measurement_params:
+                logger.info("      • %s: %s değer", param.get("name"), len(param.get("values", [])))
         else:
-            logger.info("Generic format, standart parse kullanılıyor...")
             sections = detect_sections(text)
             measurement_params = []
+            logger.info("  Generic parse: %s bölüm", len(sections))
 
+        # 4. Basic test parse
+        logger.info("\n[4] Basic Test Parse")
         basic_results = parse_test_results(text)
+        logger.info("  Test sayısı: %s", len(basic_results))
 
+        # 5. AI Analizi
+        logger.info("\n[5] AI Analizi Başlıyor")
         analysis: Dict[str, str] = {}
 
-        logger.info("AI: Test koşulları analizi...")
+        # Test koşulları
+        logger.info("\n  [5.1] Test Koşulları")
         if sections.get("test_conditions"):
+            logger.info("    Input: %s karakter", len(sections["test_conditions"]))
             analysis["test_conditions"] = analyze_test_conditions(
                 sections["test_conditions"],
-                structured_data=None,
                 format_type=pdf_format,
             )
+            logger.info("    Output: %s karakter", len(analysis["test_conditions"]))
+            logger.info("    Özet: %s...", analysis["test_conditions"][:100])
         else:
             analysis["test_conditions"] = "Test koşulları bulunamadı."
+            logger.warning("    Test koşulları bölümü YOK")
 
-        logger.info("AI: Grafik analizi...")
-        if sections.get("load_values") or sections.get("tables_text") or measurement_params:
-            graph_content = f"{sections.get('load_values', '')}\n\n{sections.get('tables_text', '')}".strip()
+        # Grafikler
+        logger.info("\n  [5.2] Grafikler")
+        graph_text = sections.get("load_values", "") or sections.get("measurement_data", "")
+
+        if measurement_params:
+            logger.info("    Measurement params var: %s grup", len(measurement_params))
+            logger.info("    Graph text: %s karakter", len(graph_text))
+
             analysis["graphs"] = analyze_graphs(
-                graph_content,
+                graph_text,
                 tables=tables,
                 measurement_params=measurement_params,
             )
-        else:
-            analysis["graphs"] = "Grafik veya ölçüm verisi bulunamadı."
 
+            logger.info("    Output: %s karakter", len(analysis["graphs"]))
+            logger.info("    Özet: %s...", analysis["graphs"][:100])
+        else:
+            logger.warning("    Measurement params YOK")
+            analysis["graphs"] = "Ölçüm parametreleri tespit edilemedi."
+
+        # Sonuçlar
+        logger.info("\n  [5.3] Sonuçlar")
         if sections.get("results"):
             analysis["results"] = analyze_results(sections["results"])
         else:
             analysis["results"] = "Sonuç bölümü bulunamadı."
 
-        analysis.setdefault("analysis_language", "tr")
-
+        # 6. Rapor oluştur
+        logger.info("\n[6] Rapor Oluşturma")
         comprehensive_report = generate_comprehensive_report(analysis)
+
+        logger.info("\n%s", "=" * 70)
+        logger.info("PDF ANALİZ TAMAMLANDI")
+        logger.info(
+            "  Test Koşulları: %s kar",
+            len(comprehensive_report.get("test_conditions", "")),
+        )
+        logger.info("  Grafikler: %s kar", len(comprehensive_report.get("graphs", "")))
+        logger.info("  Sonuçlar: %s kar", len(comprehensive_report.get("results", "")))
+        logger.info("%s\n", "=" * 70)
 
         return {
             "basic_stats": {
                 "total_tests": len(basic_results),
-                "passed": len([t for t in basic_results if t.get("status") == "PASS"]),
-                "failed": len([t for t in basic_results if t.get("status") == "FAIL"]),
+                "passed": len([t for t in basic_results if t["status"] == "PASS"]),
+                "failed": len([t for t in basic_results if t["status"] == "FAIL"]),
                 "tests": basic_results,
             },
             "comprehensive_analysis": comprehensive_report,
-            "sections": sections,
             "structured_data": sections,
             "tables": tables,
             "measurement_params": measurement_params,
-            "metadata": {
-                "text_length": len(text),
-                "table_count": len(tables),
-                "pdf_format": pdf_format,
-            },
-            "raw_text": text,
         }
 
-    except Exception as e:  # pragma: no cover
-        logger.error("Analiz hatası: %s", e, exc_info=True)
+    except Exception as e:
+        logger.error("\n%s", "=" * 70)
+        logger.error("PDF ANALİZ HATASI: %s", e, exc_info=True)
+        logger.error("%s\n", "=" * 70)
         raise
 
 
