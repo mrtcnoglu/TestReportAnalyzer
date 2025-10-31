@@ -1,238 +1,104 @@
 import React, { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { getFailedTests, getReportById, getReportTables } from "../api";
-import TestList from "./TestList";
+import { useParams } from "react-router-dom";
+import { getReportById } from "../api";
 
-const ReportDetail = () => {
+function ReportDetail() {
   const { id } = useParams();
   const [report, setReport] = useState(null);
-  const [tests, setTests] = useState([]);
-  const [failures, setFailures] = useState([]);
   const [detailedAnalysis, setDetailedAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [tables, setTables] = useState([]);
-  const [tablesLoading, setTablesLoading] = useState(false);
-  const [tablesError, setTablesError] = useState(null);
 
   useEffect(() => {
-    const loadReport = async () => {
+    const fetchData = async () => {
       try {
-        const [reportData, failureData] = await Promise.all([
-          getReportById(id),
-          getFailedTests(id),
-        ]);
-
+        const reportData = await getReportById(id);
         setReport(reportData.report);
-        setTests(reportData.results);
-        setFailures(failureData);
-
-        const detailedResponse = await fetch(
-          `http://localhost:5000/api/reports/${id}/detailed`
-        );
-        if (!detailedResponse.ok) {
-          throw new Error("Detaylı analiz alınamadı");
-        }
-        const detailedData = await detailedResponse.json();
-        setDetailedAnalysis(detailedData?.detailed_analysis || null);
-
-        console.log("Report loaded:", reportData);
-        console.log("Detailed analysis:", detailedData);
+        setDetailedAnalysis(reportData.detailed_analysis);
       } catch (err) {
-        console.error("Veri yükleme hatası:", err);
-        setError("Rapor detayları alınırken bir hata oluştu.");
+        console.error("Hata:", err);
+        setError("Rapor detayları alınamadı.");
       } finally {
         setLoading(false);
       }
     };
 
-    loadReport();
+    fetchData();
   }, [id]);
 
-  const handleFetchTables = async (reportId) => {
-    if (!reportId || tablesLoading) {
-      return;
-    }
-    setTablesError(null);
-    setTablesLoading(true);
-    try {
-      const tableResponse = await getReportTables(reportId);
-      setTables(tableResponse.tables || []);
-    } catch (fetchError) {
-      setTablesError("Tablo verileri alınamadı.");
-    } finally {
-      setTablesLoading(false);
-    }
-  };
-
-  let parsedStructuredData = null;
-  if (report?.structured_data) {
-    try {
-      parsedStructuredData = JSON.parse(report.structured_data);
-    } catch (parseError) {
-      parsedStructuredData = null;
-    }
-  }
-
   if (loading) {
-    return <p>Yükleniyor...</p>;
+    return <div>Yükleniyor...</div>;
   }
 
   if (error) {
-    return (
-      <div className="card">
-        <p>{error}</p>
-        <Link to="/">Rapora geri dön</Link>
-      </div>
-    );
+    return <div className="error-text">{error}</div>;
   }
 
   if (!report) {
-    return (
-      <div className="card">
-        <p>Rapor bulunamadı.</p>
-        <Link to="/">Rapora geri dön</Link>
-      </div>
-    );
+    return <div>Rapor bulunamadı.</div>;
   }
 
   return (
-    <div>
-      <div className="card">
+    <div className="report-detail">
+      <div className="summary-card">
         <h2>{report.filename}</h2>
-        <p>Yüklenme Tarihi: {new Date(report.upload_date).toLocaleString()}</p>
-        <div className="report-stats">
-          <span className="status-pill status-pass">PASS: {report.passed_tests}</span>
-          <span className="status-pill status-fail">FAIL: {report.failed_tests}</span>
-          <span className="status-pill">TOPLAM: {report.total_tests}</span>
-        </div>
-        <Link to="/">← Listeye dön</Link>
+        <p>Tarih: {new Date(report.upload_date).toLocaleString("tr-TR")}</p>
+        <p>
+          Toplam: {report.total_tests}, Başarılı: {report.passed_tests}, Başarısız: {report.failed_tests}
+        </p>
       </div>
 
-      {report.table_count > 0 && (
+      {detailedAnalysis?.test_conditions && (
         <div className="analysis-card">
-          <h3>📊 Tablo Verileri</h3>
-          <p>{report.table_count} adet tablo bulundu ve analiz edildi.</p>
-          <button
-            className="button"
-            onClick={() => handleFetchTables(report.id)}
-            disabled={tablesLoading}
-          >
-            {tablesLoading ? "Yükleniyor..." : "Tabloları Göster"}
-          </button>
-          {tablesError && <p className="error-text">{tablesError}</p>}
-          {tables.length > 0 && (
-            <div className="table-preview-grid">
-              {tables.map((table, index) => (
-                <div key={`${table.page}-${table.table_num}-${index}`} className="table-preview">
-                  <h4>
-                    Sayfa {table.page}, Tablo {table.table_num}
-                  </h4>
-                  <table>
-                    <tbody>
-                      {(table.data || []).slice(0, 5).map((row, rowIndex) => (
-                        <tr key={rowIndex}>
-                          {(row || []).map((cell, cellIndex) => (
-                            <td key={cellIndex}>{cell || ""}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          <h3>📋 Test Koşulları</h3>
+          <p className="ai-summary">{detailedAnalysis.test_conditions}</p>
+          {detailedAnalysis.test_conditions.length < 50 && (
+            <small style={{ color: "#999" }}>
+              ⚠️ Analiz eksik - backend log'larını kontrol edin
+            </small>
+          )}
+        </div>
+      )}
+
+      {detailedAnalysis?.graphs && (
+        <div className="analysis-card">
+          <h3>📊 Grafik ve Ölçüm Verileri</h3>
+          <p className="ai-summary">{detailedAnalysis.graphs}</p>
+          {detailedAnalysis.graphs.includes("bulunamadı") && (
+            <small style={{ color: "#f59e0b" }}>
+              ⚠️ Grafik verisi parse edilemedi
+            </small>
+          )}
+        </div>
+      )}
+
+      <div className="tests-section">
+        <h3>Test Sonuçları</h3>
+        {report.tests && report.tests.length > 0 ? (
+          report.tests.map((test, idx) => (
+            <div key={idx} className={`test-item ${test.status.toLowerCase()}`}>
+              <strong>{test.name || test.test_name || `Test ${idx + 1}`}</strong>
+              <span className={`badge-${test.status.toLowerCase()}`}>
+                {test.status === "PASS" ? "✓ Başarılı" : "✗ Başarısız"}
+              </span>
+              {test.status === "FAIL" && (
+                <div className="test-details">
+                  <p>
+                    <em>Neden:</em> {test.failure_reason || test.error_message || "Belirtilmedi"}
+                  </p>
+                  <p>
+                    <em>Öneri:</em> {test.suggested_fix || "Öneri sağlanmadı"}
+                  </p>
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-      )}
-
-      {parsedStructuredData && (
-        <div className="analysis-card">
-          <h3>📋 Yapılandırılmış Veriler</h3>
-          <div className="key-value-grid">
-            {Object.entries(parsedStructuredData).map(([key, value]) => (
-              <div key={key} className="key-value-row">
-                <span className="key">{key}:</span>
-                <span className="value">{String(value)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {detailedAnalysis && (
-        <div className="analysis-grid">
-          {detailedAnalysis.test_conditions && (
-            <div className="analysis-card">
-              <h3>📋 Test Koşulları</h3>
-              <p>{detailedAnalysis.test_conditions}</p>
-            </div>
-          )}
-
-          {detailedAnalysis.graphs && (
-            <div className="analysis-card">
-              <h3>📊 Grafikler</h3>
-              <p>{detailedAnalysis.graphs}</p>
-            </div>
-          )}
-
-          {detailedAnalysis.results && (
-            <div className="analysis-card">
-              <h3>Detaylı Test Sonuçları</h3>
-              <pre>{detailedAnalysis.results}</pre>
-            </div>
-          )}
-
-          {detailedAnalysis.improvements && (
-            <div className="analysis-card">
-              <h3>İyileştirme Önerileri</h3>
-              {(() => {
-                const items = detailedAnalysis.improvements
-                  .split(/\r?\n/)
-                  .map((item) => item.trim())
-                  .filter(Boolean);
-                if (items.length <= 1) {
-                  return <p>{items[0] || detailedAnalysis.improvements}</p>;
-                }
-                return (
-                  <ul>
-                    {items.map((item, index) => (
-                      <li key={`${item}-${index}`}>{item}</li>
-                    ))}
-                  </ul>
-                );
-              })()}
-            </div>
-          )}
-        </div>
-      )}
-
-      {detailedAnalysis &&
-        (!detailedAnalysis.test_conditions || !detailedAnalysis.graphs) && (
-          <div
-            className="analysis-card"
-            style={{ backgroundColor: "#fff3cd" }}
-          >
-            <h3>⚠️ Debug Bilgisi</h3>
-            <p>
-              Test Koşulları: {" "}
-              {detailedAnalysis.test_conditions ? "Var" : "YOK"}
-            </p>
-            <p>Grafikler: {detailedAnalysis.graphs ? "Var" : "YOK"}</p>
-            <details>
-              <summary>Raw Data</summary>
-              <pre>{JSON.stringify(detailedAnalysis, null, 2)}</pre>
-            </details>
-          </div>
+          ))
+        ) : (
+          <p>Test kaydı bulunamadı.</p>
         )}
-
-      <h3>Tüm Testler</h3>
-      <TestList tests={tests} showAiProvider />
-
-      <h3>Başarısız Testler</h3>
-      <TestList tests={failures} showAiProvider />
+      </div>
     </div>
   );
-};
+}
 
 export default ReportDetail;
