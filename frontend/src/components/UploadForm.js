@@ -1,16 +1,42 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { analyzeReportsWithAI, uploadReport } from "../api";
 
 const MIN_FILES = 1;
 const MAX_FILES = 2;
 const MAX_FILES_MESSAGE = "En fazla 2 pdf yükleyebilirsiniz!";
 
-const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisComplete, onClearAnalysis }) => {
+const UploadForm = ({
+  onUploadSuccess,
+  analysisEngine = "chatgpt",
+  onAnalysisComplete,
+  onClearAnalysis,
+  isProcessing = false,
+  onProcessingStart,
+  onProcessingEnd,
+}) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [status, setStatus] = useState({ type: null, message: "" });
-  const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const setSelectedFilesSafe = (value) => {
+    if (isMountedRef.current) {
+      setSelectedFiles(value);
+    }
+  };
+
+  const setStatusSafe = (value) => {
+    if (isMountedRef.current) {
+      setStatus(value);
+    }
+  };
 
   const sanitizeFiles = (fileList) => {
     const incomingFiles = Array.from(fileList ?? []);
@@ -39,16 +65,16 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
     const { files, error } = sanitizeFiles(fileList);
 
     if (error) {
-      setSelectedFiles([]);
-      setStatus({ type: "error", message: error });
+      setSelectedFilesSafe([]);
+      setStatusSafe({ type: "error", message: error });
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
       return;
     }
 
-    setSelectedFiles(files);
-    setStatus({ type: null, message: "" });
+    setSelectedFilesSafe(files);
+    setStatusSafe({ type: null, message: "" });
     if (files.length > 0 && typeof onClearAnalysis === "function") {
       onClearAnalysis();
     }
@@ -67,8 +93,12 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
   const handleUploadAndAnalyze = async (event) => {
     event.preventDefault();
 
+    if (isProcessing) {
+      return;
+    }
+
     if (selectedFiles.length < MIN_FILES) {
-      setStatus({
+      setStatusSafe({
         type: "error",
         message: `Lütfen en az ${MIN_FILES} adet PDF dosyası seçin.`,
       });
@@ -77,7 +107,7 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
     }
 
     if (selectedFiles.length > MAX_FILES) {
-      setStatus({
+      setStatusSafe({
         type: "error",
         message: MAX_FILES_MESSAGE,
       });
@@ -85,79 +115,82 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
       return;
     }
 
-    setIsProcessing(true);
-    setStatus({ type: null, message: "" });
+    onProcessingStart?.();
+    setStatusSafe({ type: null, message: "" });
 
     let successCount = 0;
     let failCount = 0;
 
-    for (const file of selectedFiles) {
-      try {
-        await uploadReport(file);
-        successCount += 1;
-      } catch (error) {
-        console.error("PDF yükleme hatası", error);
-        failCount += 1;
+    try {
+      for (const file of selectedFiles) {
+        try {
+          await uploadReport(file);
+          successCount += 1;
+        } catch (error) {
+          console.error("PDF yükleme hatası", error);
+          failCount += 1;
+        }
       }
-    }
 
-    let analysisResult = null;
-    let analysisErrorMessage = "";
+      let analysisResult = null;
+      let analysisErrorMessage = "";
 
-    if (successCount > 0) {
-      try {
-        analysisResult = await analyzeReportsWithAI(selectedFiles, analysisEngine);
-      } catch (error) {
-        analysisErrorMessage =
-          error?.response?.data?.error || "AI analizi sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
+      if (successCount > 0) {
+        try {
+          analysisResult = await analyzeReportsWithAI(selectedFiles, analysisEngine);
+        } catch (error) {
+          analysisErrorMessage =
+            error?.response?.data?.error || "AI analizi sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
+        }
       }
-    }
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-    setSelectedFiles([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      setSelectedFilesSafe([]);
 
-    if (successCount > 0 && typeof onUploadSuccess === "function") {
-      await onUploadSuccess();
-    }
+      if (successCount > 0 && typeof onUploadSuccess === "function") {
+        await onUploadSuccess();
+      }
 
-    if (analysisResult) {
-      onAnalysisComplete?.(analysisResult);
-    } else if (analysisErrorMessage) {
-      onAnalysisComplete?.(null);
-    } else if (successCount === 0) {
-      onAnalysisComplete?.(null);
-    }
+      if (analysisResult) {
+        onAnalysisComplete?.(analysisResult);
+      } else if (analysisErrorMessage) {
+        onAnalysisComplete?.(null);
+      } else if (successCount === 0) {
+        onAnalysisComplete?.(null);
+      }
 
-    const messages = [];
-    if (successCount === 0) {
-      messages.push("Seçilen raporlar yüklenemedi. Lütfen tekrar deneyin.");
-    } else if (failCount === 0) {
-      messages.push(`${successCount} rapor başarıyla yüklendi.`);
-    } else {
-      messages.push(`${successCount} rapor yüklendi, ${failCount} rapor yüklenemedi.`);
-    }
+      const messages = [];
+      if (successCount === 0) {
+        messages.push("Seçilen raporlar yüklenemedi. Lütfen tekrar deneyin.");
+      } else if (failCount === 0) {
+        messages.push(`${successCount} rapor başarıyla yüklendi.`);
+      } else {
+        messages.push(`${successCount} rapor yüklendi, ${failCount} rapor yüklenemedi.`);
+      }
 
-    if (analysisResult?.message) {
-      messages.push(analysisResult.message);
-    }
+      if (analysisResult?.message) {
+        messages.push(analysisResult.message);
+      }
 
-    if (analysisErrorMessage) {
-      messages.push(analysisErrorMessage);
-    }
+      if (analysisErrorMessage) {
+        messages.push(analysisErrorMessage);
+      }
 
-    let statusType = "success";
-    if (analysisErrorMessage) {
-      statusType = "error";
-    } else if (successCount === 0) {
-      statusType = "error";
-    } else if (failCount > 0) {
-      statusType = "warning";
-    }
+      let statusType = "success";
+      if (analysisErrorMessage) {
+        statusType = "error";
+      } else if (successCount === 0) {
+        statusType = "error";
+      } else if (failCount > 0) {
+        statusType = "warning";
+      }
 
-    setStatus({ type: statusType, message: messages.join(" ") });
-    setIsProcessing(false);
+      setStatusSafe({ type: statusType, message: messages.join(" ") });
+    } finally {
+      onProcessingEnd?.();
+    }
   };
 
   const handleClearSelection = (event) => {
@@ -165,11 +198,11 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
     if (isProcessing) {
       return;
     }
-    setSelectedFiles([]);
+    setSelectedFilesSafe([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-    setStatus({ type: null, message: "" });
+    setStatusSafe({ type: null, message: "" });
     if (typeof onClearAnalysis === "function") {
       onClearAnalysis();
     }
@@ -221,7 +254,9 @@ const UploadForm = ({ onUploadSuccess, analysisEngine = "chatgpt", onAnalysisCom
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            openFileDialog();
+            if (!isProcessing) {
+              openFileDialog();
+            }
           }
         }}
         aria-label="PDF dosyalarınızı sürükleyip bırakın veya dosya seçin"

@@ -13,22 +13,28 @@ const HomeSection = ({
   recentAnalyses = [],
   onAnalysisComplete,
   onClearAnalyses,
+  isAnalysisProcessing = false,
+  onAnalysisProcessingStart,
+  onAnalysisProcessingEnd,
 }) => {
   const [resetStatus, setResetStatus] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
 
   const metrics = useMemo(() => {
-    const totals = reports.reduce(
+    return reports.reduce(
       (acc, report) => {
         const status = getReportStatusLabel(report);
 
-        if (status !== "Analiz Bekleniyor") {
-          acc.analysedFiles += 1;
-          acc.totalAnalyses += 1;
+        if (status === "Analiz Bekleniyor") {
+          return acc;
+        }
 
-          if (status === "Başarılı") {
-            acc.successfulAnalyses += 1;
-          }
+        acc.analysedFiles += 1;
+
+        if (status === "Başarılı") {
+          acc.successfulAnalyses += 1;
+        } else {
+          acc.failedAnalyses += 1;
         }
 
         return acc;
@@ -36,15 +42,9 @@ const HomeSection = ({
       {
         analysedFiles: 0,
         successfulAnalyses: 0,
-        totalAnalyses: 0,
+        failedAnalyses: 0,
       }
     );
-
-    return {
-      analysedFiles: totals.analysedFiles,
-      successfulAnalyses: totals.successfulAnalyses,
-      totalAnalyses: totals.totalAnalyses,
-    };
   }, [reports]);
 
   const handleAnalysisComplete = useCallback(
@@ -82,15 +82,15 @@ const HomeSection = ({
         </div>
         <div className="metric-card">
           <span className="metric-label">
-            <span className="metric-icon metric-icon-success">✔</span>Başarılı Analizler
+            <span className="metric-icon metric-icon-success">✔</span>Başarılı Test Analizi
           </span>
           <span className="metric-value">{metrics.successfulAnalyses}</span>
         </div>
         <div className="metric-card">
           <span className="metric-label">
-            <span className="metric-icon">📊</span>Toplam Analiz
+            <span className="metric-icon metric-icon-danger">✖</span>Başarısız Test Analizi
           </span>
-          <span className="metric-value">{metrics.totalAnalyses}</span>
+          <span className="metric-value">{metrics.failedAnalyses}</span>
         </div>
       </div>
 
@@ -105,6 +105,9 @@ const HomeSection = ({
           onUploadSuccess={onRefresh}
           analysisEngine={analysisEngine}
           onAnalysisComplete={handleAnalysisComplete}
+          isProcessing={isAnalysisProcessing}
+          onProcessingStart={onAnalysisProcessingStart}
+          onProcessingEnd={onAnalysisProcessingEnd}
         />
       </div>
       <div className="card supported-types-card">
