@@ -739,6 +739,19 @@ def _normalise_language(language: str) -> str:
     return "tr"
 
 
+def _ensure_text_string(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8", errors="ignore")
+        except Exception:  # pragma: no cover - defensive decode
+            return value.decode("latin-1", errors="ignore")
+    return str(value)
+
+
 def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())
 
@@ -1015,105 +1028,89 @@ def analyze_graphs(
     measurement_params: Optional[Sequence[Dict[str, object]]] = None,
     language: str = "tr",
 ) -> str:
-    """Grafik analizi - Measurement params ile İYİLEŞTİRİLMİŞ"""
+    """Grafik analizi - GERÇEK FORMATA GÖRE"""
 
-    cleaned_text = (text or "").strip()
-    tables = list(tables or [])
-    measurement_params = list(measurement_params or [])
-
-    if not cleaned_text and not tables and not measurement_params:
-        return "Grafik veya ölçüm verisi bulunamadı."
-
-    content_parts: List[str] = []
-
-    if measurement_params:
-        content_parts.append("=== ÖLÇÜM PARAMETRELERİ ===")
-        for param in measurement_params:
-            name = param.get("name", "Parametre")
-            unit = param.get("unit", "")
-            values = param.get("values") or []
-            values_str = ", ".join(str(v) for v in values[:5])
-            if unit:
-                content_parts.append(f"- {name} [{unit}]: {values_str}")
-            else:
-                content_parts.append(f"- {name}: {values_str}")
-        content_parts.append("")
-
-    if cleaned_text:
-        content_parts.append("=== METİN İÇERİĞİ ===")
-        content_parts.append(cleaned_text[:1000])
-        content_parts.append("")
-
-    if tables:
-        content_parts.append("=== TABLO VERİLERİ ===")
-        for table_info in tables[:2]:
-            page = table_info.get("page")
-            table_num = table_info.get("table_num")
-            content_parts.append(f"Sayfa {page}, Tablo {table_num}:")
-            for row in (table_info.get("data") or [])[:5]:
-                row_text = "  | ".join(str(cell)[:20] if cell else "-" for cell in row)
-                content_parts.append(row_text)
-
-    content = "\n".join(content_parts)
-
-    if not content.strip():
-        return "Grafik veya ölçüm verisi bulunamadı."
-
-    prompt = f"""Bu test raporundaki ÖLÇÜM VERİLERİNİ analiz et (Türkçe, maksimum 150 kelime):
-
-{content[:2000]}
-
-GÖREVİN - Şunları YAZ:
-1. Hangi parametreler ölçülmüş? (Örn: Kopfbeschl., Brustbeschl., Oberschenkelkraft)
-2. Her parametrenin birimi nedir? (g, kN, ms)
-3. Değer aralıkları (min-max)
-
-ÖRNEK YANIT:
-"Baş ivmesi (Kopfbeschl.) 45-52 g aralığında ölçülmüştür.
-Göğüs ivmesi (Brustbeschl.) 38-44 g aralığındadır.
-Uyluk kuvveti (Oberschenkelkraft) 3.2-4.5 kN seviyesindedir."
-
-ÖNEMLİ:
-- SADECE ÖZETİ YAZ
-- "Grafik bulunamadı" YAZMA, yukarıdaki verileri ÖZETLE
-- Kısa ve net ol
-"""
-
-    logger.info("AI'ya grafik verisi gönderiliyor (%s karakter)", len(content))
+    from pdf_format_detector import format_measurement_params_for_ai
 
     analyzer = ai_analyzer
     analyzer._refresh_configuration()
-    provider = (analyzer.provider or "none").lower()
 
-    try:
-        if provider == "none" or not measurement_params:
-            return _extract_graph_info_enhanced(content, measurement_params)
+    text = _ensure_text_string(text)
+    measurement_params = list(measurement_params or [])
 
-        if provider in {"claude", "both"} and analyzer.claude_client:
-            try:
-                result = _call_claude_for_analysis(prompt)
-                if result and len(result) > 50:
-                    return result
-            except Exception as exc:
-                logger.error("Claude API hatası: %s", exc, exc_info=True)
-                if provider == "claude":
-                    return _extract_graph_info_enhanced(content, measurement_params)
+    if measurement_params:
+        logger.info("Measurement params bulundu: %s grup", len(measurement_params))
 
-        if provider in {"chatgpt", "both"} and analyzer.openai_client:
-            try:
-                result = _call_openai_for_analysis(prompt)
-                if result and len(result) > 50:
-                    return result
-            except Exception as exc:
-                logger.error("OpenAI API hatası: %s", exc, exc_info=True)
-                if provider == "chatgpt":
-                    return _extract_graph_info_enhanced(content, measurement_params)
+        formatted_params = format_measurement_params_for_ai(measurement_params)
 
-        return _extract_graph_info_enhanced(content, measurement_params)
+        prompt = f"""Bu test raporundaki ölçüm verilerini özetle (Türkçe, maks. 120 kelime):
 
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.error("Grafik analiz hatası: %s", exc, exc_info=True)
-        return _extract_graph_info_enhanced(content, measurement_params)
+{formatted_params}
+
+{text[:500] if text else ''}
+
+GÖREVİN:
+Her parametreyi listele: isim, değer, birim.
+
+ÖRNEK YANIT:
+"Baş ivmesi 58.15 g ve 64.72 g olarak ölçülmüştür.
+Göğüs ivmesi (ThAC) 18.4 g ve 18.27 g seviyesindedir.
+Sağ femur kuvveti 4.40 kN, sol femur kuvveti 4.82 kN'dur."
+
+SADECE ÖZETİ YAZ!
+"""
+
+        logger.info("AI'ya measurement params gönderiliyor...")
+
+        try:
+            provider = (analyzer.provider or "none").lower()
+
+            if provider != "none":
+                if provider in {"claude", "both"} and analyzer.claude_client:
+                    result = _call_claude_for_analysis(prompt)
+                    if result and len(result) > 50:
+                        logger.info("Claude yanıtı alındı: %s karakter", len(result))
+                        return result
+
+                if provider in {"chatgpt", "both"} and analyzer.openai_client:
+                    result = _call_openai_for_analysis(prompt)
+                    if result and len(result) > 50:
+                        logger.info("OpenAI yanıtı alındı: %s karakter", len(result))
+                        return result
+
+            return _format_params_fallback(measurement_params)
+
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.error("AI hatası: %s", exc)
+            return _format_params_fallback(measurement_params)
+
+    elif text and len(text) > 100:
+        logger.warning("Measurement params yok, text analiz ediliyor")
+        return "Ölçüm verileri parse edildi ancak detaylı değerler çıkarılamadı. PDF formatını kontrol edin."
+
+    else:
+        logger.warning("Grafik analizi için veri yok")
+        return "Grafik veya ölçüm verisi bulunamadı."
+
+
+def _format_params_fallback(params: Sequence[Dict[str, object]]) -> str:
+    """Fallback: Parametreleri basit formatta göster"""
+
+    if not params:
+        return "Ölçüm parametreleri tespit edilemedi."
+
+    lines: List[str] = []
+    for param in params:
+        name = param.get("name", "Parametre")
+        unit = param.get("unit", "")
+        values = list(param.get("values") or [])[:3]
+        values_str = ", ".join(str(v) for v in values)
+        if unit:
+            lines.append(f"{name}: {values_str} {unit}")
+        else:
+            lines.append(f"{name}: {values_str}")
+
+    return "Tespit edilen ölçümler:\n" + "\n".join(lines)
 
 
 def _call_claude_for_analysis(prompt: str) -> str:
