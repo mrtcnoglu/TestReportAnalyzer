@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import UploadForm from "./UploadForm";
 import AnalysisSummaryCard from "./AnalysisSummaryCard";
 import { resetAllData } from "../api";
-import { detectReportType } from "../utils/reportUtils";
+import { getReportStatusLabel } from "../utils/reportUtils";
 
 const HomeSection = ({
   reports,
@@ -20,36 +20,30 @@ const HomeSection = ({
   const metrics = useMemo(() => {
     const totals = reports.reduce(
       (acc, report) => {
-        const total = Number(report.total_tests ?? 0);
-        const passed = Number(report.passed_tests ?? 0);
-        const failed = Number(report.failed_tests ?? 0);
-        const uploadDate = report.upload_date ? new Date(report.upload_date) : null;
-        const isWithin24h = uploadDate
-          ? Date.now() - uploadDate.getTime() <= 24 * 60 * 60 * 1000
-          : false;
+        const status = getReportStatusLabel(report);
 
-        acc.totalAnalyses += 1;
-        acc.totalPassed += passed;
-        acc.totalFailed += failed;
-        acc.totalTestsLast24h += isWithin24h ? total : 0;
-        acc.types.add(detectReportType(report));
+        if (status !== "Analiz Bekleniyor") {
+          acc.analysedFiles += 1;
+          acc.totalAnalyses += 1;
+
+          if (status === "Başarılı") {
+            acc.successfulAnalyses += 1;
+          }
+        }
+
         return acc;
       },
       {
+        analysedFiles: 0,
+        successfulAnalyses: 0,
         totalAnalyses: 0,
-        totalPassed: 0,
-        totalFailed: 0,
-        totalTestsLast24h: 0,
-        types: new Set(),
       }
     );
 
     return {
+      analysedFiles: totals.analysedFiles,
+      successfulAnalyses: totals.successfulAnalyses,
       totalAnalyses: totals.totalAnalyses,
-      totalPassed: totals.totalPassed,
-      totalFailed: totals.totalFailed,
-      totalTestsLast24h: totals.totalTestsLast24h,
-      supportedTypes: Array.from(totals.types),
     };
   }, [reports]);
 
@@ -82,27 +76,21 @@ const HomeSection = ({
       <div className="metrics-grid">
         <div className="metric-card">
           <span className="metric-label">
+            <span className="metric-icon">📁</span>Analiz Edilen Dosya
+          </span>
+          <span className="metric-value">{metrics.analysedFiles}</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">
+            <span className="metric-icon metric-icon-success">✔</span>Başarılı Analizler
+          </span>
+          <span className="metric-value">{metrics.successfulAnalyses}</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">
             <span className="metric-icon">📊</span>Toplam Analiz
           </span>
           <span className="metric-value">{metrics.totalAnalyses}</span>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">
-            <span className="metric-icon metric-icon-success">✔</span>Başarılı Testler
-          </span>
-          <span className="metric-value">{metrics.totalPassed}</span>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">
-            <span className="metric-icon metric-icon-danger">✖</span>Başarısız Testler
-          </span>
-          <span className="metric-value">{metrics.totalFailed}</span>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">
-            <span className="metric-icon">⏳</span>Son 24 Saatte Analiz Edilen Test
-          </span>
-          <span className="metric-value">{metrics.totalTestsLast24h}</span>
         </div>
       </div>
 

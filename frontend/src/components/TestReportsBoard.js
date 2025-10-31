@@ -1,4 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import AnalysisSummaryCard from "./AnalysisSummaryCard";
 import {
   analyzeReportsWithAI,
@@ -16,12 +22,54 @@ import {
 } from "../utils/analysisUtils";
 
 const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }) => {
+  const storageKey = useMemo(() => {
+    const normalizedTitle = typeof title === "string"
+      ? title.trim().toLowerCase().replace(/\s+/g, "-")
+      : "board";
+    const engine = analysisEngine || "default";
+    return `test-reports-board::${engine}::${normalizedTitle}`;
+  }, [analysisEngine, title]);
+
+  const readPersistedProcessing = useCallback(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return window.sessionStorage.getItem(storageKey) === "processing";
+  }, [storageKey]);
+
+  const persistProcessingState = useCallback(
+    (value) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+      if (value) {
+        window.sessionStorage.setItem(storageKey, "processing");
+      } else {
+        window.sessionStorage.removeItem(storageKey);
+      }
+    },
+    [storageKey]
+  );
+
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const [selectedIds, setSelectedIds] = useState([]);
   const [actionMessage, setActionMessage] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(() => readPersistedProcessing());
   const [sectionAnalyses, setSectionAnalyses] = useState([]);
   const [compareResult, setCompareResult] = useState(null);
   const [isComparing, setIsComparing] = useState(false);
+
+  useEffect(() => {
+    const storedProcessing = readPersistedProcessing();
+    setIsProcessing((prev) => (prev === storedProcessing ? prev : storedProcessing));
+  }, [readPersistedProcessing]);
 
   const tableData = useMemo(
     () =>
@@ -91,6 +139,7 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
     }
 
     setIsProcessing(true);
+    persistProcessingState(true);
     setActionMessage(
       `${selectedIds.length} rapor ${engineLabel} ile yeniden analiz ediliyor...`
     );
@@ -120,24 +169,34 @@ const TestReportsBoard = ({ title, reports, analysisEngine, onAnalysisComplete }
         engineKey: analysisEngine,
       });
 
-      const sectionEntry = entryFromParent ||
+      const sectionEntry =
+        entryFromParent ||
         createAnalysisEntry(result, { engineKey: analysisEngine, source: title });
 
-      if (sectionEntry) {
+      if (sectionEntry && isMountedRef.current) {
         setSectionAnalyses((prev) => [sectionEntry, ...prev].slice(0, 2));
       }
 
-      setActionMessage(result?.message || `${selectedIds.length} rapor başarıyla analiz edildi.`);
-      setSelectedIds([]);
+      if (isMountedRef.current) {
+        setActionMessage(
+          result?.message || `${selectedIds.length} rapor başarıyla analiz edildi.`
+        );
+        setSelectedIds([]);
+      }
     } catch (error) {
       console.error("Analiz hatası", error);
       const message =
         error?.response?.data?.error ||
         error?.message ||
         "Analiz sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
-      setActionMessage(message);
+      if (isMountedRef.current) {
+        setActionMessage(message);
+      }
     } finally {
-      setIsProcessing(false);
+      persistProcessingState(false);
+      if (isMountedRef.current) {
+        setIsProcessing(false);
+      }
     }
   };
 
